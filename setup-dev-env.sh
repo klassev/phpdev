@@ -13,7 +13,7 @@ fi
 #===============================================================================
 # Автор: klassev
 # Описание: Автоматизированная установка и настройка dev-окружения
-# Включает: Apache, Nginx, PHP (8.1, 8.2, 8.3, 8.4), MariaDB, PostgreSQL,
+# Включает: Apache,f Nginx, PHP (8.1, 8.2, 8.3, 8.4), MariaDB, PostgreSQL,
 #           Go, MailHog, Docker, Composer, Node.js (NVM), ZSH + Oh My Zsh
 #
 # ВАЖНО: PHP 7.x более недоступен для Ubuntu 24.04!
@@ -783,11 +783,9 @@ install_mkcert() {
     chmod +x mkcert
     sudo mv mkcert /usr/local/bin/
     
-    # Установка локального CA
-    mkcert -install
-    
     print_success "mkcert установлен"
     print_info "Использование: mkcert example.test '*.example.test' localhost 127.0.0.1"
+    print_info "Примечание: mkcert -install будет выполнен после установки всех программ"
 }
 
 #===============================================================================
@@ -1683,6 +1681,32 @@ EOF
         print_warning "PhpStorm уже установлен в /opt/phpstorm"
     fi
     
+    # --- DBViewer ---
+    print_info "Установка DBViewer..."
+    if ! is_command_exists dbviewer && ! dpkg -l | grep -q dbviewer; then
+        # Скачивание DBViewer .deb пакета
+        print_info "Скачивание DBViewer .deb..."
+        wget --progress=bar:force "https://github.com/DBViewer/dbviewer/releases/latest/download/dbviewer_amd64.deb" -O dbviewer.deb 2>&1 || true
+        if [ -f dbviewer.deb ] && [ -s dbviewer.deb ]; then
+            sudo apt install -y ./dbviewer.deb
+            rm -f dbviewer.deb
+            print_success "DBViewer установлен"
+        else
+            # Попробуем альтернативный источник
+            wget --progress=bar:force "https://github.com/DBViewer/dbviewer/releases/download/v1.0.0/dbviewer_amd64.deb" -O dbviewer.deb 2>&1 || true
+            if [ -f dbviewer.deb ] && [ -s dbviewer.deb ]; then
+                sudo apt install -y ./dbviewer.deb
+                rm -f dbviewer.deb
+                print_success "DBViewer установлен"
+            else
+                print_warning "Не удалось скачать DBViewer"
+                FAILED_DOWNLOADS+=("DBViewer — https://github.com/DBViewer/dbviewer/releases")
+            fi
+        fi
+    else
+        print_warning "DBViewer уже установлен"
+    fi
+    
     cd - > /dev/null
     
     print_success "Приложения установлены"
@@ -2403,6 +2427,443 @@ PROJECTSCRIPT
 }
 
 #===============================================================================
+# Функция: Создание скрипта для управления виртуальными хостами
+#===============================================================================
+create_vhost_script() {
+    print_section "Создание скрипта для управления виртуальными хостами"
+    
+    local script_path="/usr/local/bin/vhost"
+    
+    if [ -f "$script_path" ]; then
+        print_warning "Скрипт 'vhost' уже существует"
+        print_info "Обновляем..."
+    fi
+    
+    sudo tee "$script_path" > /dev/null << 'VHOSTSCRIPT'
+#!/bin/bash
+
+# Цвета
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+APACHE_SITES_AVAILABLE="/etc/apache2/sites-available"
+APACHE_SITES_ENABLED="/etc/apache2/sites-enabled"
+NGINX_SITES_AVAILABLE="/etc/nginx/sites-available"
+NGINX_SITES_ENABLED="/etc/nginx/sites-enabled"
+
+# Определение редактора
+EDITOR="${EDITOR:-nano}"
+
+list_apache_hosts() {
+    echo -e "${CYAN}=== Apache VirtualHosts ===${NC}"
+    echo ""
+    echo -e "${YELLOW}Доступные (sites-available):${NC}"
+    if [ -d "$APACHE_SITES_AVAILABLE" ]; then
+        for conf in "$APACHE_SITES_AVAILABLE"/*.conf; do
+            if [ -f "$conf" ]; then
+                local name=$(basename "$conf" .conf)
+                local enabled=""
+                if [ -L "$APACHE_SITES_ENABLED/$name.conf" ]; then
+                    enabled="${GREEN}[enabled]${NC}"
+                else
+                    enabled="${RED}[disabled]${NC}"
+                fi
+                echo -e "  ${BLUE}$name${NC} $enabled"
+            fi
+        done
+    else
+        echo "  Нет доступных конфигураций"
+    fi
+    echo ""
+}
+
+list_nginx_hosts() {
+    echo -e "${CYAN}=== Nginx VirtualHosts ===${NC}"
+    echo ""
+    echo -e "${YELLOW}Доступные (sites-available):${NC}"
+    if [ -d "$NGINX_SITES_AVAILABLE" ]; then
+        for conf in "$NGINX_SITES_AVAILABLE"/*; do
+            if [ -f "$conf" ] && [ "$(basename "$conf")" != "default" ]; then
+                local name=$(basename "$conf")
+                local enabled=""
+                if [ -L "$NGINX_SITES_ENABLED/$name" ]; then
+                    enabled="${GREEN}[enabled]${NC}"
+                else
+                    enabled="${RED}[disabled]${NC}"
+                fi
+                echo -e "  ${BLUE}$name${NC} $enabled"
+            fi
+        done
+    else
+        echo "  Нет доступных конфигураций"
+    fi
+    echo ""
+}
+
+edit_apache_host() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Ошибка: укажите имя виртуального хоста${NC}"
+        echo "Использование: vhost edit apache <имя>"
+        return 1
+    fi
+    
+    local conf_file="$APACHE_SITES_AVAILABLE/${name}.conf"
+    if [ ! -f "$conf_file" ]; then
+        echo -e "${RED}Ошибка: конфигурация $name.conf не найдена${NC}"
+        return 1
+    fi
+    
+    echo -e "${BLUE}Редактирование Apache виртуального хоста: $name${NC}"
+    sudo "$EDITOR" "$conf_file"
+    
+    echo -e "${YELLOW}Проверка конфигурации Apache...${NC}"
+    if sudo apache2ctl configtest 2>/dev/null; then
+        echo -e "${GREEN}Конфигурация корректна${NC}"
+        read -p "Перезагрузить Apache? [y/N]: " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            sudo systemctl reload apache2
+            echo -e "${GREEN}Apache перезагружен${NC}"
+        fi
+    else
+        echo -e "${RED}Ошибка в конфигурации Apache!${NC}"
+        return 1
+    fi
+}
+
+edit_nginx_host() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Ошибка: укажите имя виртуального хоста${NC}"
+        echo "Использование: vhost edit nginx <имя>"
+        return 1
+    fi
+    
+    local conf_file="$NGINX_SITES_AVAILABLE/$name"
+    if [ ! -f "$conf_file" ]; then
+        echo -e "${RED}Ошибка: конфигурация $name не найдена${NC}"
+        return 1
+    fi
+    
+    echo -e "${BLUE}Редактирование Nginx виртуального хоста: $name${NC}"
+    sudo "$EDITOR" "$conf_file"
+    
+    echo -e "${YELLOW}Проверка конфигурации Nginx...${NC}"
+    if sudo nginx -t 2>/dev/null; then
+        echo -e "${GREEN}Конфигурация корректна${NC}"
+        read -p "Перезагрузить Nginx? [y/N]: " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            sudo systemctl reload nginx
+            echo -e "${GREEN}Nginx перезагружен${NC}"
+        fi
+    else
+        echo -e "${RED}Ошибка в конфигурации Nginx!${NC}"
+        return 1
+    fi
+}
+
+enable_apache_host() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Ошибка: укажите имя виртуального хоста${NC}"
+        echo "Использование: vhost enable apache <имя>"
+        return 1
+    fi
+    
+    if [ ! -f "$APACHE_SITES_AVAILABLE/${name}.conf" ]; then
+        echo -e "${RED}Ошибка: конфигурация $name.conf не найдена${NC}"
+        return 1
+    fi
+    
+    sudo a2ensite "${name}.conf" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        sudo systemctl reload apache2
+        echo -e "${GREEN}Apache виртуальный хост $name включен${NC}"
+    else
+        echo -e "${RED}Ошибка при включении виртуального хоста${NC}"
+        return 1
+    fi
+}
+
+disable_apache_host() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Ошибка: укажите имя виртуального хоста${NC}"
+        echo "Использование: vhost disable apache <имя>"
+        return 1
+    fi
+    
+    sudo a2dissite "${name}.conf" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        sudo systemctl reload apache2
+        echo -e "${GREEN}Apache виртуальный хост $name отключен${NC}"
+    else
+        echo -e "${RED}Ошибка при отключении виртуального хоста${NC}"
+        return 1
+    fi
+}
+
+enable_nginx_host() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Ошибка: укажите имя виртуального хоста${NC}"
+        echo "Использование: vhost enable nginx <имя>"
+        return 1
+    fi
+    
+    if [ ! -f "$NGINX_SITES_AVAILABLE/$name" ]; then
+        echo -e "${RED}Ошибка: конфигурация $name не найдена${NC}"
+        return 1
+    fi
+    
+    sudo ln -sf "$NGINX_SITES_AVAILABLE/$name" "$NGINX_SITES_ENABLED/$name" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        if sudo nginx -t 2>/dev/null; then
+            sudo systemctl reload nginx
+            echo -e "${GREEN}Nginx виртуальный хост $name включен${NC}"
+        else
+            sudo rm -f "$NGINX_SITES_ENABLED/$name"
+            echo -e "${RED}Ошибка в конфигурации Nginx! Виртуальный хост не включен${NC}"
+            return 1
+        fi
+    else
+        echo -e "${RED}Ошибка при включении виртуального хоста${NC}"
+        return 1
+    fi
+}
+
+disable_nginx_host() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Ошибка: укажите имя виртуального хоста${NC}"
+        echo "Использование: vhost disable nginx <имя>"
+        return 1
+    fi
+    
+    if [ -L "$NGINX_SITES_ENABLED/$name" ]; then
+        sudo rm -f "$NGINX_SITES_ENABLED/$name"
+        sudo systemctl reload nginx
+        echo -e "${GREEN}Nginx виртуальный хост $name отключен${NC}"
+    else
+        echo -e "${YELLOW}Виртуальный хост $name уже отключен${NC}"
+    fi
+}
+
+show_apache_host() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Ошибка: укажите имя виртуального хоста${NC}"
+        echo "Использование: vhost show apache <имя>"
+        return 1
+    fi
+    
+    local conf_file="$APACHE_SITES_AVAILABLE/${name}.conf"
+    if [ ! -f "$conf_file" ]; then
+        echo -e "${RED}Ошибка: конфигурация $name.conf не найдена${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}=== Apache VirtualHost: $name ===${NC}"
+    echo ""
+    cat "$conf_file"
+}
+
+show_nginx_host() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Ошибка: укажите имя виртуального хоста${NC}"
+        echo "Использование: vhost show nginx <имя>"
+        return 1
+    fi
+    
+    local conf_file="$NGINX_SITES_AVAILABLE/$name"
+    if [ ! -f "$conf_file" ]; then
+        echo -e "${RED}Ошибка: конфигурация $name не найдена${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}=== Nginx VirtualHost: $name ===${NC}"
+    echo ""
+    cat "$conf_file"
+}
+
+delete_apache_host() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Ошибка: укажите имя виртуального хоста${NC}"
+        echo "Использование: vhost delete apache <имя>"
+        return 1
+    fi
+    
+    if [ ! -f "$APACHE_SITES_AVAILABLE/${name}.conf" ]; then
+        echo -e "${RED}Ошибка: конфигурация $name.conf не найдена${NC}"
+        return 1
+    fi
+    
+    echo -e "${YELLOW}Внимание: это действие удалит конфигурацию виртуального хоста${NC}"
+    read -p "Удалить Apache виртуальный хост $name? [y/N]: " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        sudo a2dissite "${name}.conf" 2>/dev/null
+        sudo rm -f "$APACHE_SITES_AVAILABLE/${name}.conf"
+        sudo systemctl reload apache2
+        echo -e "${GREEN}Apache виртуальный хост $name удален${NC}"
+    else
+        echo "Отменено"
+    fi
+}
+
+delete_nginx_host() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo -e "${RED}Ошибка: укажите имя виртуального хоста${NC}"
+        echo "Использование: vhost delete nginx <имя>"
+        return 1
+    fi
+    
+    if [ ! -f "$NGINX_SITES_AVAILABLE/$name" ]; then
+        echo -e "${RED}Ошибка: конфигурация $name не найдена${NC}"
+        return 1
+    fi
+    
+    echo -e "${YELLOW}Внимание: это действие удалит конфигурацию виртуального хоста${NC}"
+    read -p "Удалить Nginx виртуальный хост $name? [y/N]: " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        sudo rm -f "$NGINX_SITES_ENABLED/$name"
+        sudo rm -f "$NGINX_SITES_AVAILABLE/$name"
+        sudo systemctl reload nginx
+        echo -e "${GREEN}Nginx виртуальный хост $name удален${NC}"
+    else
+        echo "Отменено"
+    fi
+}
+
+show_help() {
+    echo -e "${GREEN}Управление виртуальными хостами${NC}"
+    echo ""
+    echo "Использование: vhost <команда> [сервер] [имя]"
+    echo ""
+    echo -e "${YELLOW}Команды:${NC}"
+    echo "  list [apache|nginx]     - Показать список виртуальных хостов"
+    echo "  edit <apache|nginx> <имя> - Редактировать виртуальный хост"
+    echo "  show <apache|nginx> <имя> - Показать содержимое конфигурации"
+    echo "  enable <apache|nginx> <имя> - Включить виртуальный хост"
+    echo "  disable <apache|nginx> <имя> - Отключить виртуальный хост"
+    echo "  delete <apache|nginx> <имя> - Удалить виртуальный хост"
+    echo ""
+    echo -e "${YELLOW}Примеры:${NC}"
+    echo "  vhost list                    - Показать все виртуальные хосты"
+    echo "  vhost list apache             - Показать Apache виртуальные хосты"
+    echo "  vhost edit apache mysite.test - Редактировать Apache виртуальный хост"
+    echo "  vhost edit nginx mysite.test  - Редактировать Nginx виртуальный хост"
+    echo "  vhost enable apache mysite    - Включить Apache виртуальный хост"
+    echo "  vhost disable nginx mysite    - Отключить Nginx виртуальный хост"
+    echo "  vhost show apache mysite      - Показать конфигурацию Apache"
+    echo "  vhost delete apache mysite    - Удалить Apache виртуальный хост"
+    echo ""
+    echo -e "${YELLOW}Примечание:${NC}"
+    echo "  Редактор по умолчанию: \$EDITOR (или nano)"
+    echo "  Для изменения редактора: export EDITOR=vim"
+}
+
+case "$1" in
+    list|ls)
+        if [ "$2" = "apache" ]; then
+            list_apache_hosts
+        elif [ "$2" = "nginx" ]; then
+            list_nginx_hosts
+        else
+            list_apache_hosts
+            list_nginx_hosts
+        fi
+        ;;
+    edit|e)
+        if [ "$2" = "apache" ]; then
+            edit_apache_host "$3"
+        elif [ "$2" = "nginx" ]; then
+            edit_nginx_host "$3"
+        else
+            echo -e "${RED}Ошибка: укажите сервер (apache или nginx)${NC}"
+            show_help
+            exit 1
+        fi
+        ;;
+    show|cat)
+        if [ "$2" = "apache" ]; then
+            show_apache_host "$3"
+        elif [ "$2" = "nginx" ]; then
+            show_nginx_host "$3"
+        else
+            echo -e "${RED}Ошибка: укажите сервер (apache или nginx)${NC}"
+            show_help
+            exit 1
+        fi
+        ;;
+    enable|on)
+        if [ "$2" = "apache" ]; then
+            enable_apache_host "$3"
+        elif [ "$2" = "nginx" ]; then
+            enable_nginx_host "$3"
+        else
+            echo -e "${RED}Ошибка: укажите сервер (apache или nginx)${NC}"
+            show_help
+            exit 1
+        fi
+        ;;
+    disable|off)
+        if [ "$2" = "apache" ]; then
+            disable_apache_host "$3"
+        elif [ "$2" = "nginx" ]; then
+            disable_nginx_host "$3"
+        else
+            echo -e "${RED}Ошибка: укажите сервер (apache или nginx)${NC}"
+            show_help
+            exit 1
+        fi
+        ;;
+    delete|rm|remove)
+        if [ "$2" = "apache" ]; then
+            delete_apache_host "$3"
+        elif [ "$2" = "nginx" ]; then
+            delete_nginx_host "$3"
+        else
+            echo -e "${RED}Ошибка: укажите сервер (apache или nginx)${NC}"
+            show_help
+            exit 1
+        fi
+        ;;
+    help|--help|-h|"")
+        show_help
+        ;;
+    *)
+        echo -e "${RED}Неизвестная команда: $1${NC}"
+        show_help
+        exit 1
+        ;;
+esac
+VHOSTSCRIPT
+    
+    sudo chmod +x "$script_path"
+    
+    print_success "Скрипт 'vhost' установлен в /usr/local/bin/vhost"
+    print_info "Использование:"
+    print_info "  vhost list                    - Показать все виртуальные хосты"
+    print_info "  vhost edit apache mysite.test - Редактировать Apache виртуальный хост"
+    print_info "  vhost edit nginx mysite.test  - Редактировать Nginx виртуальный хост"
+    print_info "  vhost enable apache mysite    - Включить виртуальный хост"
+    print_info "  vhost disable nginx mysite    - Отключить виртуальный хост"
+    print_info "  vhost show apache mysite      - Показать конфигурацию"
+    print_info "  vhost delete apache mysite   - Удалить виртуальный хост"
+}
+
+#===============================================================================
 # Функция: Создание шаблона Apache VirtualHost
 #===============================================================================
 #===============================================================================
@@ -2818,9 +3279,10 @@ show_help() {
     echo "  dev-script       - Установить скрипт 'dev' для управления сервисами"
     echo "  mailhog-service  - Создать systemd сервис для MailHog"
     echo "  new-project      - Установить скрипт 'new-project'"
+    echo "  vhost-script     - Установить скрипт 'vhost' для управления виртуальными хостами"
     echo "  test-hosts       - Создать тестовые хосты (Apache+PHP8.4, Nginx+PHP8.4)"
     echo "  templates        - Создать шаблоны VirtualHost"
-    echo "  scripts          - Установить все скрипты (dev, new-project)"
+    echo "  scripts          - Установить все скрипты (dev, new-project, vhost)"
     echo ""
     echo -e "${YELLOW}Приложения:${NC}"
     echo "  apps             - VS Code, Chrome, Cursor, Obsidian, Thunderbird, FileZilla, PhpStorm"
@@ -2848,6 +3310,8 @@ show_help() {
     echo "  dev start           - Запустить все сервисы"
     echo "  dev status          - Показать статус сервисов"
     echo "  new-project site.test - Создать новый проект"
+    echo "  vhost list          - Показать все виртуальные хосты"
+    echo "  vhost edit apache mysite.test - Редактировать виртуальный хост"
 }
 
 #===============================================================================
@@ -2880,7 +3344,7 @@ show_menu() {
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  ${CYAN}НАСТРОЙКА:${NC}                                                    ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  18)  Настроить Git       19)  SSH ключи                       ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  20)  Скрипты (dev, new-project)                               ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  20)  Скрипты (dev, new-project, vhost)                        ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  21)  Шрифты Meslo Nerd Font                                   ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  ${CYAN}ПРИЛОЖЕНИЯ:${NC}                                                   ${GREEN}║${NC}"
@@ -2905,8 +3369,9 @@ show_menu() {
                 install_redis && install_memcached && \
                 install_nginx && install_composer && install_symfony && install_nvm && \
                 install_laravel && install_docker && install_extras && install_apps && \
+                (is_command_exists mkcert && mkcert -install || true) && \
                 configure_git && \
-                generate_ssh_keys && create_dev_script && create_new_project_script && \
+                generate_ssh_keys && create_dev_script && create_new_project_script && create_vhost_script && \
                 create_mailhog_service && install_meslo_fonts && \
                 create_test_hosts && \
                 create_apache_vhost_template && create_nginx_vhost_template
@@ -2928,7 +3393,7 @@ show_menu() {
             17) run_prechecks && install_zsh ;;
             18) configure_git ;;
             19) generate_ssh_keys ;;
-            20) create_dev_script && create_new_project_script ;;
+            20) create_dev_script && create_new_project_script && create_vhost_script ;;
             21) install_meslo_fonts ;;
             22) run_prechecks && install_apps ;;
             23) health_check ;;
@@ -3027,10 +3492,14 @@ main() {
                 install_docker
                 install_extras
                 install_apps
+                if is_command_exists mkcert; then
+                    mkcert -install
+                fi
                 configure_git
                 generate_ssh_keys
                 create_dev_script
                 create_new_project_script
+                create_vhost_script
                 create_mailhog_service
                 install_meslo_fonts
                 create_test_hosts
@@ -3130,12 +3599,16 @@ main() {
             new-project)
                 create_new_project_script
                 ;;
+            vhost-script)
+                create_vhost_script
+                ;;
             test-hosts)
                 create_test_hosts
                 ;;
             scripts)
                 create_dev_script
                 create_new_project_script
+                create_vhost_script
                 ;;
             templates)
                 create_apache_vhost_template
@@ -3193,6 +3666,8 @@ main() {
         print_info "  dev start        — запустить все сервисы"
         print_info "  dev status       — показать статус сервисов"
         print_info "  new-project X    — создать новый проект"
+        print_info "  vhost list       — показать все виртуальные хосты"
+        print_info "  vhost edit apache/nginx <имя> — редактировать виртуальный хост"
     fi
 }
 
