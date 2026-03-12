@@ -40,7 +40,7 @@ LOG_FILE="$HOME_DIR/setup-dev-env.log"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Версии софта
-GO_VERSION="1.24.4"
+GO_VERSION="1.26.1"
 MKCERT_VERSION="v1.4.4"
 NVM_VERSION="v0.40.3"
 
