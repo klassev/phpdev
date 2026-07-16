@@ -596,13 +596,12 @@ install_zsh() {
 install_apache() {
     print_section "Установка Apache2"
     
-    if is_command_exists apache2; then
+    if ! is_command_exists apache2; then
+        sudo apt install -y apache2 libapache2-mpm-itk
+    else
         print_warning "Apache2 уже установлен: $(apache2 -v | head -1)"
-        print_info "Пропускаем установку"
-        return 0
+        print_info "Обновляем порты и модули..."
     fi
-    
-    sudo apt install -y apache2 libapache2-mpm-itk
     
     # Включение необходимых модулей
     sudo a2enmod rewrite
@@ -630,11 +629,17 @@ Listen 8080
 </IfModule>
 PORTSCONF
     
-    # Обновление default site для нового порта
-    sudo sed -i 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-available/000-default.conf
+    # Обновление default sites для новых портов
+    if [ -f /etc/apache2/sites-available/000-default.conf ]; then
+        sudo sed -i 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-available/000-default.conf
+    fi
+    if [ -f /etc/apache2/sites-available/default-ssl.conf ]; then
+        sudo sed -i 's/<VirtualHost \*:443>/<VirtualHost *:8443>/' /etc/apache2/sites-available/default-ssl.conf
+        sudo sed -i 's/<VirtualHost _default_:\*:443>/<VirtualHost _default_:8443>/' /etc/apache2/sites-available/default-ssl.conf
+    fi
     
     # Отключение автозапуска
-    sudo systemctl disable apache2.service
+    sudo systemctl disable apache2.service 2>/dev/null || true
     
     print_success "Apache2 установлен"
     print_info "Порты Apache: HTTP=8080, HTTPS=8443"
@@ -643,125 +648,171 @@ PORTSCONF
 }
 
 #===============================================================================
-# Функция: Установка PHP (множество версий)
+# Функция: Подключение PPA Ondřej Surý для PHP
+#===============================================================================
+ensure_php_repo() {
+    if ! apt-cache show php8.2-fpm &>/dev/null; then
+        print_info "Добавление репозитория ppa:ondrej/php..."
+        sudo add-apt-repository -y ppa:ondrej/php
+        sudo apt update
+    fi
+}
+
+#===============================================================================
+# Функция: Установка конкретной версии PHP
+# Аргумент: версия (7.3, 7.4, 8.1, 8.2, 8.3, 8.4)
+#===============================================================================
+install_php_version() {
+    local version="$1"
+    local pkgs=()
+    
+    case "$version" in
+        7.3|7.4|8.1|8.2|8.3|8.4) ;;
+        *)
+            print_error "Неподдерживаемая версия PHP: $version"
+            print_info "Доступны: 7.3, 7.4, 8.1, 8.2, 8.3, 8.4"
+            return 1
+            ;;
+    esac
+    
+    print_section "Установка PHP $version"
+    
+    if is_command_exists "php$version"; then
+        print_warning "PHP $version уже установлен: $(php$version -v | head -1)"
+        print_info "Пропускаем установку PHP $version"
+        return 0
+    fi
+    
+    ensure_php_repo
+    
+    if ! apt-cache show "php${version}-fpm" &>/dev/null; then
+        print_warning "PHP $version недоступен для вашей версии Ubuntu"
+        return 1
+    fi
+    
+    print_info "Установка PHP $version..."
+    
+    pkgs=(
+        "php${version}-cli"
+        "php${version}-fpm"
+        "php${version}-common"
+        "php${version}-bcmath"
+        "php${version}-bz2"
+        "php${version}-curl"
+        "php${version}-gd"
+        "php${version}-gmp"
+        "php${version}-intl"
+        "php${version}-mbstring"
+        "php${version}-mysql"
+        "php${version}-opcache"
+        "php${version}-pgsql"
+        "php${version}-readline"
+        "php${version}-xml"
+        "php${version}-zip"
+        "php${version}-sqlite3"
+        "php${version}-xdebug"
+        "libapache2-mod-php${version}"
+    )
+    
+    # Расширения, которых может не быть в PHP 8.4
+    if [ "$version" != "8.4" ]; then
+        pkgs+=(
+            "php${version}-imap"
+            "php${version}-gettext"
+            "php${version}-dev"
+        )
+    fi
+    
+    # PHP 7.4 требует отдельный пакет json; в 8.x json встроен
+    if [ "$version" = "7.4" ]; then
+        pkgs+=("php${version}-json")
+    fi
+    
+    if sudo apt install -y "${pkgs[@]}"; then
+        sudo systemctl disable "php${version}-fpm.service" 2>/dev/null || true
+        print_success "PHP $version установлен"
+        print_info "PHP-FPM порт: 90${version//./}"
+        print_info "Переключение CLI: sudo update-alternatives --config php"
+        return 0
+    else
+        print_warning "PHP $version не удалось установить"
+        return 1
+    fi
+}
+
+#===============================================================================
+# Функция: Установка PHP (все версии)
 #===============================================================================
 install_php() {
     print_section "Установка PHP (7.3, 7.4, 8.1, 8.2, 8.3, 8.4)"
     
-    # Проверка установленных версий PHP
-    local installed_versions=""
-    for v in 7.3 7.4 8.1 8.2 8.3 8.4; do
-        if is_command_exists "php$v"; then
-            installed_versions+="$v "
+    ensure_php_repo
+    
+    local failed=0
+    for version in 7.3 7.4 8.1 8.2 8.3 8.4; do
+        if ! install_php_version "$version"; then
+            # EOL-версии могут быть недоступны — не считаем фатальной ошибкой
+            if [[ "$version" == 7.* ]]; then
+                print_warning "PHP $version пропущен (EOL / недоступен)"
+            else
+                failed=1
+            fi
         fi
     done
     
-    if [ -n "$installed_versions" ]; then
-        print_warning "PHP уже установлен: версии $installed_versions"
-        print_info "Текущая версия CLI: $(php -v | head -1)"
-        print_info "Пропускаем установку PHP"
-        return 0
-    fi
-    
-    # Добавление репозитория Ondřej Surý для PHP
-    sudo add-apt-repository -y ppa:ondrej/php
-    sudo apt update
-    
-    # PHP 7.3 (EOL — может быть недоступен для Ubuntu 24.04)
-    print_info "Установка PHP 7.3..."
-    if apt-cache show php7.3-fpm &>/dev/null; then
-        sudo apt install -y php7.3-{cli,fpm,common,bcmath,bz2,curl,gd,gmp,intl,mbstring,mysql,opcache,pgsql,readline,xml,zip,sqlite3,xdebug,imap,gettext,dev} \
-            libapache2-mod-php7.3 || \
-            print_warning "PHP 7.3 не удалось установить"
-    else
-        print_warning "PHP 7.3 недоступен для вашей версии Ubuntu"
-    fi
-    
-    # PHP 7.4 (EOL — может быть недоступен для Ubuntu 24.04)
-    print_info "Установка PHP 7.4..."
-    if apt-cache show php7.4-fpm &>/dev/null; then
-        sudo apt install -y php7.4-{cli,fpm,common,bcmath,bz2,curl,gd,gmp,intl,mbstring,mysql,opcache,pgsql,readline,xml,zip,sqlite3,xdebug,imap,gettext,dev,json} \
-            libapache2-mod-php7.4 || \
-            print_warning "PHP 7.4 не удалось установить"
-    else
-        print_warning "PHP 7.4 недоступен для вашей версии Ubuntu"
-    fi
-    
-    # PHP 8.1 (LTS до ноября 2025)
-    print_info "Установка PHP 8.1..."
-    sudo apt install -y php8.1-{cli,fpm,common,bcmath,bz2,curl,gd,gmp,intl,mbstring,mysql,opcache,pgsql,readline,xml,zip,sqlite3,xdebug,imap,gettext,dev} \
-        libapache2-mod-php8.1 || \
-        print_warning "PHP 8.1 не удалось установить"
-    
-    # PHP 8.2
-    print_info "Установка PHP 8.2..."
-    sudo apt install -y php8.2-{cli,fpm,common,bcmath,bz2,curl,gd,gmp,intl,mbstring,mysql,opcache,pgsql,readline,xml,zip,sqlite3,xdebug,imap,gettext,dev} \
-        gcc make autoconf libc-dev pkg-config libapache2-mod-php8.2
-    
-    # PHP 8.3
-    print_info "Установка PHP 8.3..."
-    sudo apt install -y php8.3-{cli,fpm,common,bcmath,bz2,curl,gd,gmp,intl,mbstring,mysql,opcache,pgsql,readline,xml,zip,sqlite3,xdebug,imap,gettext,dev} \
-        libapache2-mod-php8.3 || \
-        print_warning "PHP 8.3 не удалось установить"
-    
-    # PHP 8.4
-    print_info "Установка PHP 8.4..."
-    sudo apt install -y php8.4-{cli,fpm,common,bcmath,bz2,curl,gd,gmp,intl,mbstring,mysql,opcache,pgsql,readline,xml,zip,sqlite3,xdebug} \
-        libapache2-mod-php8.4 || \
-        print_warning "PHP 8.4 не удалось установить"
-    
-    # Отключение автозапуска PHP-FPM сервисов
-    for version in 7.3 7.4 8.1 8.2 8.3 8.4; do
-        sudo systemctl disable "php${version}-fpm.service" 2>/dev/null || true
-    done
-    
-    print_success "PHP установлен"
+    print_success "Установка PHP завершена"
     print_info "Для переключения версии PHP: sudo update-alternatives --config php"
     print_warning ""
     print_warning "=== ВНИМАНИЕ: PHP 7.3 и 7.4 достигли EOL ==="
     print_warning "Они больше не получают обновления безопасности."
     print_warning "Используйте только для поддержки legacy-проектов."
+    
+    if [ "$failed" -ne 0 ]; then
+        print_warning "Некоторые версии PHP установить не удалось — см. лог выше"
+    fi
 }
 
 #===============================================================================
-# Функция: Настройка PHP-FPM для Nginx
+# Функция: Настройка PHP-FPM для одной или всех версий
+# Аргумент (опционально): версия, например 8.2. Без аргумента — все установленные.
 #===============================================================================
 configure_php_fpm() {
-    print_section "Настройка PHP-FPM"
+    local versions=("$@")
     
-    # Настройка каждой версии PHP-FPM на свой порт
-    # PHP 7.3 -> 9073
-    # PHP 7.4 -> 9074
-    # PHP 8.1 -> 9081
-    # PHP 8.2 -> 9082
-    # PHP 8.3 -> 9083
-    # PHP 8.4 -> 9084
+    if [ ${#versions[@]} -eq 0 ]; then
+        versions=(7.3 7.4 8.1 8.2 8.3 8.4)
+        print_section "Настройка PHP-FPM"
+    else
+        print_section "Настройка PHP-FPM (${versions[*]})"
+    fi
     
-    for version in 7.3 7.4 8.1 8.2 8.3 8.4; do
-        port="90${version//./}"
-        conf_file="/etc/php/${version}/fpm/pool.d/www.conf"
+    # Порты: 7.3→9073, 7.4→9074, 8.1→9081, 8.2→9082, 8.3→9083, 8.4→9084
+    
+    local configured=0
+    for version in "${versions[@]}"; do
+        local port="90${version//./}"
+        local conf_file="/etc/php/${version}/fpm/pool.d/www.conf"
         
         if [ -f "$conf_file" ]; then
             print_info "Настройка PHP ${version}-FPM на порт $port..."
             
-            # Резервное копирование перед изменением
             backup_config "$conf_file"
             
-            # Замена пользователя на текущего
             sudo sed -i "s/www-data/$USERNAME/g" "$conf_file"
-            
-            # Замена сокета на TCP порт
             sudo sed -i "s|listen = /run/php/php${version}-fpm.sock|listen = 127.0.0.1:$port|g" "$conf_file"
+            
+            sudo /etc/init.d/php${version}-fpm restart 2>/dev/null || true
+            configured=$((configured + 1))
         fi
     done
     
-    # Перезапуск PHP-FPM сервисов
-    for version in 7.3 7.4 8.1 8.2 8.3 8.4; do
-        sudo /etc/init.d/php${version}-fpm restart 2>/dev/null || true
-    done
+    if [ "$configured" -eq 0 ]; then
+        print_warning "Не найдено установленных PHP-FPM для настройки"
+        return 1
+    fi
     
     print_success "PHP-FPM настроен"
-    print_info "Порты PHP-FPM: 8.1→9081, 8.2→9082, 8.3→9083, 8.4→9084"
+    print_info "Порты PHP-FPM: 7.3→9073, 7.4→9074, 8.1→9081, 8.2→9082, 8.3→9083, 8.4→9084"
 }
 
 #===============================================================================
@@ -2326,11 +2377,12 @@ fi
 if [ "$SERVER" = "apache" ]; then
     CONF_FILE="/etc/apache2/sites-available/$PROJECT_NAME.conf"
     
+    # Apache: 8080/8443 (Nginx занимает 80/443)
     sudo tee "$CONF_FILE" > /dev/null << APACHECONF
 Define ROOT "$PROJECT_DIR/public"
 Define SITE "$PROJECT_NAME"
 
-<VirtualHost *:80>
+<VirtualHost *:8080>
     DocumentRoot "\${ROOT}"
     ServerName \${SITE}
     ServerAlias *.\${SITE}
@@ -2343,13 +2395,18 @@ Define SITE "$PROJECT_NAME"
             AssignUserId $USERNAME $USERNAME
         </IfModule>
     </Directory>
+    
+    # PHP $PHP_VERSION через FPM (порт $PHP_PORT)
+    <FilesMatch \.php$>
+        SetHandler "proxy:fcgi://127.0.0.1:$PHP_PORT"
+    </FilesMatch>
 </VirtualHost>
 APACHECONF
 
     if [ "$CREATE_SSL" = true ]; then
         sudo tee -a "$CONF_FILE" > /dev/null << APACHESSL
 
-<VirtualHost *:443>
+<VirtualHost *:8443>
     DocumentRoot "\${ROOT}"
     ServerName \${SITE}
     ServerAlias *.\${SITE}
@@ -2362,6 +2419,12 @@ APACHECONF
             AssignUserId $USERNAME $USERNAME
         </IfModule>
     </Directory>
+    
+    # PHP $PHP_VERSION через FPM (порт $PHP_PORT)
+    <FilesMatch \.php$>
+        SetHandler "proxy:fcgi://127.0.0.1:$PHP_PORT"
+    </FilesMatch>
+    
     SSLEngine on
     SSLCertificateFile      "/etc/ssl/certs/${PROJECT_NAME}.pem"
     SSLCertificateKeyFile   "/etc/ssl/private/${PROJECT_NAME}-key.pem"
@@ -2369,6 +2432,7 @@ APACHECONF
 APACHESSL
     fi
     
+    sudo a2enmod proxy_fcgi 2>/dev/null || true
     sudo a2ensite "$PROJECT_NAME.conf"
     sudo systemctl reload apache2
     echo -e "${GREEN}✓${NC} Apache конфиг создан и активирован"
@@ -2407,12 +2471,22 @@ esac
 echo ""
 echo -e "${GREEN}=== Проект создан успешно! ===${NC}"
 echo ""
-if [ "$CREATE_SSL" = true ]; then
-    echo -e "  URL: ${BLUE}https://$PROJECT_NAME${NC}"
+if [ "$SERVER" = "apache" ]; then
+    if [ "$CREATE_SSL" = true ]; then
+        echo -e "  URL: ${BLUE}https://$PROJECT_NAME:8443${NC}"
+        echo -e "  URL: ${BLUE}http://$PROJECT_NAME:8080${NC}"
+    else
+        echo -e "  URL: ${BLUE}http://$PROJECT_NAME:8080${NC}"
+    fi
 else
-    echo -e "  URL: ${BLUE}http://$PROJECT_NAME${NC}"
+    if [ "$CREATE_SSL" = true ]; then
+        echo -e "  URL: ${BLUE}https://$PROJECT_NAME${NC}"
+    else
+        echo -e "  URL: ${BLUE}http://$PROJECT_NAME${NC}"
+    fi
 fi
 echo -e "  Директория: $PROJECT_DIR"
+echo -e "  PHP-FPM: $PHP_VERSION → 127.0.0.1:$PHP_PORT"
 echo ""
 echo -e "${YELLOW}Не забудьте запустить сервисы:${NC} dev start"
 PROJECTSCRIPT
@@ -3253,7 +3327,9 @@ show_help() {
     echo "  nginx            - Установить Nginx"
     echo ""
     echo -e "${YELLOW}PHP:${NC}"
-    echo "  php              - Установить PHP (8.1, 8.2, 8.3, 8.4)"
+    echo "  php              - Установить все версии PHP (7.3, 7.4, 8.1-8.4)"
+    echo "  php7.3|php7.4    - Установить конкретную версию PHP"
+    echo "  php8.1|php8.2|php8.3|php8.4"
     echo "  php-fpm          - Настроить PHP-FPM для Nginx"
     echo "  xdebug           - Настроить Xdebug"
     echo ""
@@ -3301,10 +3377,11 @@ show_help() {
     echo "  --no-input         - Пропустить ввод параметров (для автоматизации)"
     echo ""
     echo -e "${BLUE}Примеры:${NC}"
-    echo "  $0 all              - Полная установка (с вводом параметров)"
-    echo "  $0 all --no-input   - Полная установка без вопросов"
-    echo "  $0 php composer     - Установить только PHP и Composer"
-    echo "  $0 menu             - Запустить интерактивное меню"
+    echo "  $0 all                - Полная установка (с вводом параметров)"
+    echo "  $0 all --no-input     - Полная установка без вопросов"
+    echo "  $0 apache php8.2      - Apache + PHP 8.2"
+    echo "  $0 php composer       - Все версии PHP и Composer"
+    echo "  $0 menu               - Запустить интерактивное меню"
     echo ""
     echo -e "${BLUE}После установки:${NC}"
     echo "  dev start           - Запустить все сервисы"
@@ -3331,35 +3408,36 @@ show_menu() {
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  ${CYAN}WEB + PHP:${NC}                                                    ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}   4)  Apache2              5)  Nginx                           ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}   6)  PHP (8.1-8.4)        7)  Настроить PHP-FPM               ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}   6)  PHP (все версии)     7)  Настроить PHP-FPM               ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}   8)  Apache + PHP 8.2     9)  PHP 8.2                         ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  ${CYAN}БАЗЫ ДАННЫХ И КЭШ:${NC}                                            ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}   8)  MariaDB              9)  PostgreSQL                      ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  10)  Redis               11)  Memcached                       ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  10)  MariaDB             11)  PostgreSQL                      ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  12)  Redis               13)  Memcached                       ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  ${CYAN}ИНСТРУМЕНТЫ:${NC}                                                  ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  13)  Composer + Laravel + Symfony                             ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  14)  NVM (Node.js)       15)  Docker                          ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  16)  Go + MailHog        17)  ZSH + Oh My Zsh                 ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  14)  Composer + Laravel + Symfony                             ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  15)  NVM (Node.js)       16)  Docker                          ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  17)  Go + MailHog        18)  ZSH + Oh My Zsh                 ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  ${CYAN}НАСТРОЙКА:${NC}                                                    ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  18)  Настроить Git       19)  SSH ключи                       ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  20)  Скрипты (dev, new-project, vhost)                        ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  21)  Шрифты Meslo Nerd Font                                   ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  19)  Настроить Git       20)  SSH ключи                       ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  21)  Скрипты (dev, new-project, vhost)                        ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  22)  Шрифты Meslo Nerd Font                                   ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  ${CYAN}ПРИЛОЖЕНИЯ:${NC}                                                   ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  22)  VS Code, Chrome, Cursor, Obsidian, PhpStorm и др.        ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  23)  VS Code, Chrome, Cursor, Obsidian, PhpStorm и др.        ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  ${CYAN}УТИЛИТЫ:${NC}                                                      ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  23)  Health Check (проверка окружения)                        ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  24)  Экспорт конфигурации                                     ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  25)  Импорт конфигурации                                      ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  24)  Health Check (проверка окружения)                        ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  25)  Экспорт конфигурации                                     ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  26)  Импорт конфигурации                                      ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}   0)  Выход                                                    ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
         echo ""
-        read -p "Выберите опцию [0-25]: " choice
+        read -p "Выберите опцию [0-26]: " choice
         
         case $choice in
             1)  run_prechecks && update_system && install_base_packages && install_zsh && \
@@ -3380,25 +3458,28 @@ show_menu() {
             3)  run_prechecks && install_base_packages ;;
             4)  run_prechecks && install_apache ;;
             5)  run_prechecks && install_nginx ;;
-            6)  run_prechecks && install_php ;;
+            6)  run_prechecks && install_php && configure_php_fpm ;;
             7)  configure_php_fpm ;;
-            8)  run_prechecks && install_mariadb ;;
-            9)  run_prechecks && install_postgresql ;;
-            10) run_prechecks && install_redis ;;
-            11) run_prechecks && install_memcached ;;
-            13) run_prechecks && install_composer && install_symfony && install_laravel ;;
-            14) run_prechecks && install_nvm ;;
-            15) run_prechecks && install_docker ;;
-            16) run_prechecks && install_go && install_mailhog && create_mailhog_service ;;
-            17) run_prechecks && install_zsh ;;
-            18) configure_git ;;
-            19) generate_ssh_keys ;;
-            20) create_dev_script && create_new_project_script && create_vhost_script ;;
-            21) install_meslo_fonts ;;
-            22) run_prechecks && install_apps ;;
-            23) health_check ;;
-            24) export_config ;;
-            25) import_config ;;
+            8)  run_prechecks && create_directories && install_apache && \
+                install_php_version "8.2" && configure_php_fpm "8.2" ;;
+            9)  run_prechecks && install_php_version "8.2" && configure_php_fpm "8.2" ;;
+            10) run_prechecks && install_mariadb ;;
+            11) run_prechecks && install_postgresql ;;
+            12) run_prechecks && install_redis ;;
+            13) run_prechecks && install_memcached ;;
+            14) run_prechecks && install_composer && install_symfony && install_laravel ;;
+            15) run_prechecks && install_nvm ;;
+            16) run_prechecks && install_docker ;;
+            17) run_prechecks && install_go && install_mailhog && create_mailhog_service ;;
+            18) run_prechecks && install_zsh ;;
+            19) configure_git ;;
+            20) generate_ssh_keys ;;
+            21) create_dev_script && create_new_project_script && create_vhost_script ;;
+            22) install_meslo_fonts ;;
+            23) run_prechecks && install_apps ;;
+            24) health_check ;;
+            25) export_config ;;
+            26) import_config ;;
             0)  
                 print_success "До свидания!"
                 exit 0 
@@ -3520,6 +3601,11 @@ main() {
                 ;;
             php)
                 install_php
+                configure_php_fpm
+                ;;
+            php7.3|php7.4|php8.1|php8.2|php8.3|php8.4)
+                install_php_version "${arg#php}"
+                configure_php_fpm "${arg#php}"
                 ;;
             php-fpm)
                 configure_php_fpm
@@ -3624,6 +3710,9 @@ main() {
                 ;;
             backups)
                 list_backups
+                ;;
+            --no-input|--noinput|-y)
+                # Флаг обрабатывается выше, здесь пропускаем
                 ;;
             *)
                 print_error "Неизвестная опция: $arg"
