@@ -101,6 +101,11 @@ chmod +x setup-dev-env.sh
 
 # PHP
 ./setup-dev-env.sh php              # Все версии PHP (7.3, 7.4, 8.1-8.4)
+./setup-dev-env.sh php8.2           # Только PHP 8.2 (+ настройка FPM)
+./setup-dev-env.sh php8.1           # Только PHP 8.1
+./setup-dev-env.sh php8.3           # Только PHP 8.3
+./setup-dev-env.sh php8.4           # Только PHP 8.4
+./setup-dev-env.sh apache php8.2    # Apache + PHP 8.2
 ./setup-dev-env.sh php-fpm          # Настройка PHP-FPM
 ./setup-dev-env.sh xdebug           # Настройка Xdebug
 
