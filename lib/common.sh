@@ -55,7 +55,7 @@ load_versions_config() {
     local cfg="$SCRIPT_DIR/config/versions.env"
     
     # Defaults, если файла нет или ключ не задан
-    PHP_SUPPORTED="${PHP_SUPPORTED:-8.1 8.2 8.3 8.4}"
+    PHP_SUPPORTED="${PHP_SUPPORTED:-8.1 8.2 8.3 8.4 8.5}"
     PHP_LEGACY="${PHP_LEGACY:-7.3 7.4}"
     PHP_DEFAULT="${PHP_DEFAULT:-8.4}"
     GO_VERSION="${GO_VERSION:-1.26.1}"

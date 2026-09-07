@@ -180,18 +180,45 @@ db_backup() {
             local out="$DB_BACKUP_DIR/redis-dump-${stamp}.rdb"
             print_info "Бэкап Redis → $out"
             sudo systemctl start redis-server 2>/dev/null || true
-            redis-cli SAVE >/dev/null 2>&1 || true
-            local rdb=""
-            for cand in /var/lib/redis/dump.rdb /var/lib/redis/*/dump.rdb; do
-                if [ -f "$cand" ]; then rdb="$cand"; break; fi
-            done
-            if [ -n "$rdb" ] && sudo cp "$rdb" "$out"; then
-                sudo chown "$USERNAME:$USERNAME" "$out" 2>/dev/null || true
-                print_success "Бэкап Redis: $out"
-            else
-                print_warning "Не найден dump.rdb — пропускаем файловый бэкап Redis"
-                return 1
+            sleep 0.5
+            
+            # Предпочтительно: снять RDB напрямую через redis-cli --rdb
+            if redis-cli --rdb "$out" >/dev/null 2>&1 && [ -s "$out" ]; then
+                print_success "Бэкап Redis (redis-cli --rdb): $out ($(du -h "$out" | cut -f1))"
+                return 0
             fi
+            rm -f "$out" 2>/dev/null || true
+            
+            # Fallback: SAVE + копия dump.rdb (учёт dir/dbfilename из конфига)
+            redis-cli SAVE >/dev/null 2>&1 || true
+            local rdb="" dir dbfilename
+            dir=$(redis-cli CONFIG GET dir 2>/dev/null | awk 'NR==2{print; exit}')
+            dbfilename=$(redis-cli CONFIG GET dbfilename 2>/dev/null | awk 'NR==2{print; exit}')
+            if [ -n "$dir" ] && [ -n "$dbfilename" ] && [ -f "${dir}/${dbfilename}" ]; then
+                rdb="${dir}/${dbfilename}"
+            else
+                for cand in /var/lib/redis/dump.rdb /var/lib/redis/*/dump.rdb; do
+                    if [ -f "$cand" ]; then rdb="$cand"; break; fi
+                done
+                # иногда файл только у root
+                if [ -z "$rdb" ]; then
+                    rdb=$(sudo bash -c 'ls /var/lib/redis/dump.rdb /var/lib/redis/*/dump.rdb 2>/dev/null' | head -1 || true)
+                fi
+            fi
+            if [ -n "$rdb" ] && sudo cp "$rdb" "$out" 2>/dev/null; then
+                sudo chown "$USERNAME:$USERNAME" "$out" 2>/dev/null || true
+                if [ -s "$out" ]; then
+                    print_success "Бэкап Redis: $out"
+                    return 0
+                fi
+            fi
+            rm -f "$out" 2>/dev/null || true
+            # Пустой/свежий Redis без RDB — не блокируем update
+            local marker="$DB_BACKUP_DIR/redis-empty-${stamp}.txt"
+            echo "Redis backup skipped or empty at $(date -Iseconds); PING=$(redis-cli ping 2>/dev/null || echo fail)" > "$marker"
+            print_warning "dump.rdb не найден (часто на пустом Redis) — маркер: $marker"
+            print_info "Обновление продолжится; для жёсткого требования бэкапа используйте заполненный Redis"
+            return 0
             ;;
         memcached)
             print_info "Memcached без постоянного хранилища — бэкап не требуется"
