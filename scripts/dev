@@ -1,0 +1,208 @@
+#!/bin/bash
+
+# Цвета
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Сервисы
+WEB_SERVICES="apache2 nginx"
+DB_SERVICES="mariadb postgresql"
+CACHE_SERVICES="redis-server memcached"
+# Динамически определяем установленные PHP-FPM сервисы
+PHP_SERVICES=""
+if compgen -G "/lib/systemd/system/php*-fpm.service" > /dev/null 2>&1; then
+    for unit in /lib/systemd/system/php*-fpm.service; do
+        PHP_SERVICES="$PHP_SERVICES $(basename "$unit" .service)"
+    done
+elif compgen -G "/usr/lib/systemd/system/php*-fpm.service" > /dev/null 2>&1; then
+    for unit in /usr/lib/systemd/system/php*-fpm.service; do
+        PHP_SERVICES="$PHP_SERVICES $(basename "$unit" .service)"
+    done
+fi
+PHP_SERVICES=$(echo "$PHP_SERVICES" | xargs)  # trim whitespace
+OTHER_SERVICES="mailpit mailhog"
+
+ALL_SERVICES="$WEB_SERVICES $DB_SERVICES $CACHE_SERVICES $PHP_SERVICES $OTHER_SERVICES"
+
+print_status() {
+    local service=$1
+    if systemctl is-active --quiet "$service" 2>/dev/null; then
+        echo -e "  ${GREEN}●${NC} $service ${GREEN}(active)${NC}"
+    else
+        echo -e "  ${RED}○${NC} $service ${RED}(inactive)${NC}"
+    fi
+}
+
+start_services() {
+    local services="${1:-$ALL_SERVICES}"
+    echo -e "${BLUE}Запуск сервисов...${NC}"
+    for service in $services; do
+        if systemctl list-unit-files | grep -q "^$service"; then
+            sudo systemctl start "$service" 2>/dev/null && \
+                echo -e "  ${GREEN}✓${NC} $service запущен" || \
+                echo -e "  ${YELLOW}!${NC} $service не удалось запустить"
+        fi
+    done
+}
+
+stop_services() {
+    local services="${1:-$ALL_SERVICES}"
+    echo -e "${BLUE}Остановка сервисов...${NC}"
+    for service in $services; do
+        if systemctl is-active --quiet "$service" 2>/dev/null; then
+            sudo systemctl stop "$service" 2>/dev/null && \
+                echo -e "  ${GREEN}✓${NC} $service остановлен" || \
+                echo -e "  ${YELLOW}!${NC} $service не удалось остановить"
+        fi
+    done
+}
+
+restart_services() {
+    local services="${1:-$ALL_SERVICES}"
+    echo -e "${BLUE}Перезапуск сервисов...${NC}"
+    for service in $services; do
+        if systemctl list-unit-files | grep -q "^$service"; then
+            sudo systemctl restart "$service" 2>/dev/null && \
+                echo -e "  ${GREEN}✓${NC} $service перезапущен" || \
+                echo -e "  ${YELLOW}!${NC} $service не удалось перезапустить"
+        fi
+    done
+}
+
+status_services() {
+    echo -e "${BLUE}=== Статус сервисов ===${NC}"
+    echo ""
+    echo -e "${YELLOW}Web серверы:${NC}"
+    for s in $WEB_SERVICES; do print_status "$s"; done
+    echo ""
+    echo -e "${YELLOW}Базы данных:${NC}"
+    for s in $DB_SERVICES; do print_status "$s"; done
+    echo ""
+    echo -e "${YELLOW}Кэш:${NC}"
+    for s in $CACHE_SERVICES; do print_status "$s"; done
+    echo ""
+    echo -e "${YELLOW}PHP-FPM:${NC}"
+    for s in $PHP_SERVICES; do print_status "$s"; done
+    echo ""
+    echo -e "${YELLOW}Другие:${NC}"
+    for s in $OTHER_SERVICES; do print_status "$s"; done
+}
+
+show_help() {
+    echo "Управление dev-сервисами"
+    echo ""
+    echo "Использование: dev <команда> [сервисы]"
+    echo ""
+    echo "Команды:"
+    echo "  start [сервисы]   - Запустить сервисы (все по умолчанию)"
+    echo "  stop [сервисы]    - Остановить сервисы"
+    echo "  restart [сервисы] - Перезапустить сервисы"
+    echo "  status            - Показать статус всех сервисов"
+    echo "  web               - Запустить только web (apache2/nginx + php-fpm)"
+    echo "  db                - Запустить только БД (mariadb + postgresql)"
+    echo "  db-update […]     - Обновить БД через setup-dev-env.sh db update"
+    echo "  cache             - Запустить только кэш (redis + memcached)"
+    echo "  php <версия>      - Переключить версию PHP CLI"
+    echo ""
+    echo "Примеры:"
+    echo "  dev start         - Запустить все сервисы"
+    echo "  dev stop nginx    - Остановить только nginx"
+    echo "  dev web           - Запустить web-стек"
+    echo "  dev cache         - Запустить redis и memcached"
+    echo "  dev php 8.2       - Переключить PHP CLI на 8.2"
+    echo "  dev db-update mariadb - Обновить MariaDB (с бэкапом)"
+}
+
+find_setup_script() {
+    local cand
+    for cand in \
+        "${PHPDEV_SETUP:-}" \
+        "$HOME/www/phpdev/setup-dev-env.sh" \
+        "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/../setup-dev-env.sh" \
+        "$(pwd)/setup-dev-env.sh"; do
+        if [ -n "$cand" ] && [ -x "$cand" ]; then
+            echo "$cand"
+            return 0
+        fi
+    done
+    return 1
+}
+
+run_db_update() {
+    shift || true
+    local setup
+    if ! setup=$(find_setup_script); then
+        echo -e "${RED}Не найден setup-dev-env.sh${NC}"
+        echo "Укажите путь: export PHPDEV_SETUP=/path/to/setup-dev-env.sh"
+        echo "Или: ./setup-dev-env.sh db update $*"
+        return 1
+    fi
+    exec "$setup" db update "$@"
+}
+
+switch_php() {
+    local version="$1"
+    if [ -z "$version" ]; then
+        echo -e "${YELLOW}Текущая версия PHP CLI:${NC}"
+        php -v | head -1
+        echo ""
+        echo "Доступные версии:"
+        sudo update-alternatives --list php 2>/dev/null
+        echo ""
+        echo "Использование: dev php <версия>"
+        return
+    fi
+    
+    local php_path="/usr/bin/php$version"
+    if [ -f "$php_path" ]; then
+        sudo update-alternatives --set php "$php_path"
+        echo -e "${GREEN}PHP CLI переключён на версию $version${NC}"
+        php -v | head -1
+    else
+        echo -e "${RED}PHP $version не установлен${NC}"
+    fi
+}
+
+case "$1" in
+    start)
+        shift
+        start_services "$*"
+        ;;
+    stop)
+        shift
+        stop_services "$*"
+        ;;
+    restart)
+        shift
+        restart_services "$*"
+        ;;
+    status|st)
+        status_services
+        ;;
+    web)
+        start_services "$WEB_SERVICES $PHP_SERVICES"
+        ;;
+    db)
+        start_services "$DB_SERVICES"
+        ;;
+    db-update)
+        run_db_update "$@"
+        ;;
+    cache)
+        start_services "$CACHE_SERVICES"
+        ;;
+    php)
+        switch_php "$2"
+        ;;
+    help|--help|-h|"")
+        show_help
+        ;;
+    *)
+        echo -e "${RED}Неизвестная команда: $1${NC}"
+        show_help
+        exit 1
+        ;;
+esac
