@@ -582,8 +582,6 @@ mkcert -install
 
 MIT — см. [LICENSE](LICENSE).
 
-План улучшений (пошагово): [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md).
-
 ---
 
 ## 👤 Автор
