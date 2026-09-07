@@ -17,8 +17,8 @@ show_help() {
     echo "  nginx            - Установить Nginx"
     echo ""
     echo -e "${YELLOW}PHP:${NC}"
-    echo "  php              - Установить PHP 8.1–8.4"
-    echo "  php8.1|php8.2|php8.3|php8.4 - Конкретная версия (+ FPM)"
+    echo "  php              - Установить PHP (${PHP_SUPPORTED:-8.1–8.5})"
+    echo "  php8.1|php8.2|php8.3|php8.4|php8.5 - Конкретная версия (+ FPM)"
     echo "  php7.3|php7.4    - Legacy best-effort (обычно недоступны на 24.04; лучше Docker)"
     echo "  php-fpm          - Настроить PHP-FPM для Nginx"
     echo "  xdebug           - Настроить Xdebug"
@@ -336,7 +336,7 @@ main() {
                 install_php
                 configure_php_fpm
                 ;;
-            php7.3|php7.4|php8.1|php8.2|php8.3|php8.4)
+            php7.3|php7.4|php8.1|php8.2|php8.3|php8.4|php8.5)
                 install_php_version "${arg#php}"
                 configure_php_fpm "${arg#php}"
                 ;;

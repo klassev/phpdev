@@ -71,31 +71,31 @@ install_php_version() {
         "libapache2-mod-php${version}"
     )
     
-    # Расширения, которых может не быть в PHP 8.4
-    if [ "$version" != "8.4" ]; then
-        pkgs+=(
-            "php${version}-imap"
-            "php${version}-gettext"
-            "php${version}-dev"
-        )
-    fi
-    
     # PHP 7.4 требует отдельный пакет json; в 8.x json встроен
     if [ "$version" = "7.4" ]; then
         pkgs+=("php${version}-json")
     fi
     
-    if sudo apt install -y "${pkgs[@]}"; then
-        sudo systemctl disable "php${version}-fpm.service" 2>/dev/null || true
-        print_success "PHP $version установлен"
-        print_info "PHP-FPM порт: 90${version//./}"
-        print_info "Переключение CLI: sudo update-alternatives --config php"
-        record_php_installed "$version"
-        return 0
-    else
-        print_warning "PHP $version не удалось установить"
+    if ! sudo apt install -y "${pkgs[@]}"; then
+        print_warning "PHP $version не удалось установить (основные пакеты)"
         return 1
     fi
+    
+    # Опциональные расширения (могут отсутствовать в новых минорных релизах)
+    local opt
+    for opt in "php${version}-imap" "php${version}-gettext" "php${version}-dev"; do
+        if apt-cache show "$opt" &>/dev/null; then
+            sudo apt install -y "$opt" 2>/dev/null || print_warning "Опциональный пакет пропущен: $opt"
+        fi
+    done
+    
+    sudo systemctl disable "php${version}-fpm.service" 2>/dev/null || true
+    print_success "PHP $version установлен"
+    print_info "PHP-FPM порт: 90${version//./}"
+    print_info "Переключение CLI: sudo update-alternatives --config php"
+    print_info "Или: $0 lang default php $version"
+    record_php_installed "$version"
+    return 0
 }
 
 install_php() {
@@ -156,7 +156,7 @@ configure_php_fpm() {
     fi
     
     print_success "PHP-FPM настроен"
-    print_info "Порты PHP-FPM: 8.1→9081, 8.2→9082, 8.3→9083, 8.4→9084 (legacy 7.x→907x)"
+    print_info "Порты PHP-FPM: 8.1→9081 … 8.5→9085 (legacy 7.x→907x)"
 }
 
 configure_xdebug() {

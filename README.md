@@ -13,7 +13,7 @@
 > ⚡ Apache и Nginx могут работать одновременно!
 
 ### PHP
-- **PHP 8.1, 8.2, 8.3, 8.4** — через apt (PPA ondrej/php) с PHP-FPM
+- **PHP 8.1–8.5** — через apt (PPA ondrej/php) с PHP-FPM
 - **Xdebug** — отладка для PhpStorm / Cursor
 - Расширения: mysql, pgsql, redis, memcached, gd, curl, mbstring, xml, zip и др.
 
@@ -23,6 +23,7 @@
 | PHP 8.2 | 9082 | Активная поддержка |
 | PHP 8.3 | 9083 | Активная поддержка |
 | PHP 8.4 | 9084 | Активная поддержка |
+| PHP 8.5 | 9085 | Активная поддержка |
 
 > **Политика PHP 7.x:** на Ubuntu 24.04 пакеты PHP 7.3/7.4 через apt обычно **недоступны**. Команды `php7.3` / `php7.4` — best-effort; для legacy-проектов используйте **Docker**. Шаблон Compose появится в этапе 7 плана улучшений.
 
@@ -98,10 +99,9 @@ chmod +x setup-dev-env.sh
 ./setup-dev-env.sh nginx
 
 # PHP
-./setup-dev-env.sh php              # PHP 8.1–8.4
+./setup-dev-env.sh php              # PHP из PHP_SUPPORTED (в т.ч. 8.5)
+./setup-dev-env.sh php8.5           # Только PHP 8.5 (+ FPM)
 ./setup-dev-env.sh php8.2           # Только PHP 8.2 (+ настройка FPM)
-./setup-dev-env.sh php8.1           # Только PHP 8.1
-./setup-dev-env.sh php8.3           # Только PHP 8.3
 ./setup-dev-env.sh php8.4           # Только PHP 8.4
 ./setup-dev-env.sh apache php8.2    # Apache + PHP 8.2
 ./setup-dev-env.sh php-fpm          # Настройка PHP-FPM
@@ -362,6 +362,7 @@ phpdev/
 | PHP 8.2 FPM | 9082 |
 | PHP 8.3 FPM | 9083 |
 | PHP 8.4 FPM | 9084 |
+| PHP 8.5 FPM | 9085 |
 
 ### Xdebug
 

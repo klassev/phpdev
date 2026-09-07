@@ -14,5 +14,6 @@
 - PHP apt по умолчанию только 8.1–8.4; PHP 7.x — Docker / best-effort
 - Утилиты `dev` / `new-project` / `vhost` вынесены в `scripts/`
 
-### Security
-- Убрана рекомендация ja-netfilter для PhpStorm
+### Fixed
+- Redis backup no longer aborts `db update` when `dump.rdb` is missing (uses `redis-cli --rdb`, then soft marker)
+- PHP 8.5 added to `PHP_SUPPORTED` and CLI (`php8.5` / `lang add php 8.5`)
