@@ -13,20 +13,18 @@
 > ⚡ Apache и Nginx могут работать одновременно!
 
 ### PHP
-- **PHP 7.3, 7.4, 8.1, 8.2, 8.3, 8.4** — все версии с PHP-FPM
-- **Xdebug** — отладка для PhpStorm
+- **PHP 8.1, 8.2, 8.3, 8.4** — через apt (PPA ondrej/php) с PHP-FPM
+- **Xdebug** — отладка для PhpStorm / Cursor
 - Расширения: mysql, pgsql, redis, memcached, gd, curl, mbstring, xml, zip и др.
 
 | Версия | PHP-FPM порт | Статус |
 |--------|--------------|--------|
-| PHP 7.3 | 9073 | ⚠️ EOL |
-| PHP 7.4 | 9074 | ⚠️ EOL |
-| PHP 8.1 | 9081 | LTS до ноября 2025 |
+| PHP 8.1 | 9081 | Security fixes до ноября 2025 |
 | PHP 8.2 | 9082 | Активная поддержка |
 | PHP 8.3 | 9083 | Активная поддержка |
 | PHP 8.4 | 9084 | Активная поддержка |
 
-> ⚠️ **Внимание:** PHP 7.3 и 7.4 достигли EOL (End of Life) и не получают обновления безопасности. Используйте только для поддержки legacy-проектов.
+> **Политика PHP 7.x:** на Ubuntu 24.04 пакеты PHP 7.3/7.4 через apt обычно **недоступны**. Команды `php7.3` / `php7.4` — best-effort; для legacy-проектов используйте **Docker**. Шаблон Compose появится в этапе 7 плана улучшений.
 
 ### Базы данных и кэш
 - **MariaDB** — MySQL-совместимая БД
@@ -42,7 +40,7 @@
 - **Go** — язык программирования
 - **Docker** — контейнеризация
 - **mkcert** — локальные SSL сертификаты (CA автоматически устанавливается после установки всех программ)
-- **MailHog** — перехват email для тестирования
+- **Mailpit** — перехват email (SMTP 1025, UI 8025); MailHog — legacy через `MAIL_CATCHER=mailhog`
 
 ### Приложения
 - **VS Code** — редактор кода
@@ -100,7 +98,7 @@ chmod +x setup-dev-env.sh
 ./setup-dev-env.sh nginx
 
 # PHP
-./setup-dev-env.sh php              # Все версии PHP (7.3, 7.4, 8.1-8.4)
+./setup-dev-env.sh php              # PHP 8.1–8.4
 ./setup-dev-env.sh php8.2           # Только PHP 8.2 (+ настройка FPM)
 ./setup-dev-env.sh php8.1           # Только PHP 8.1
 ./setup-dev-env.sh php8.3           # Только PHP 8.3
@@ -108,6 +106,7 @@ chmod +x setup-dev-env.sh
 ./setup-dev-env.sh apache php8.2    # Apache + PHP 8.2
 ./setup-dev-env.sh php-fpm          # Настройка PHP-FPM
 ./setup-dev-env.sh xdebug           # Настройка Xdebug
+# php7.3 / php7.4 — обычно недоступны на 24.04; для legacy — Docker
 
 # Базы данных
 ./setup-dev-env.sh mariadb
@@ -122,7 +121,8 @@ chmod +x setup-dev-env.sh
 ./setup-dev-env.sh symfony
 ./setup-dev-env.sh docker
 ./setup-dev-env.sh go
-./setup-dev-env.sh mailhog
+./setup-dev-env.sh mailpit
+./setup-dev-env.sh mailhog          # legacy
 
 # Приложения
 ./setup-dev-env.sh apps             # VS Code, Chrome, Cursor, PhpStorm и др.
@@ -152,6 +152,59 @@ chmod +x setup-dev-env.sh
 
 > ⚡ Все скрипты (`dev`, `new-project`, `vhost`) устанавливаются автоматически при полной установке или через команду `./setup-dev-env.sh scripts`
 
+Исходники лежат в репозитории и копируются в `/usr/local/bin`:
+
+| Утилита | Исходник | Куда ставится |
+|---------|----------|---------------|
+| `dev` | `scripts/dev` | `/usr/local/bin/dev` |
+| `new-project` | `scripts/new-project` | `/usr/local/bin/new-project` |
+| `vhost` | `scripts/vhost` | `/usr/local/bin/vhost` |
+
+Шаблоны VirtualHost:
+
+| Шаблон | Исходник | Копия в `$HOME` |
+|--------|----------|-----------------|
+| Apache | `templates/apache/vhost.conf` | `~/vhost-template-apache.conf` |
+| Nginx | `templates/nginx/vhost.conf` | `~/vhost-template-nginx.conf` |
+
+Правки утилит делайте в `scripts/` / `templates/`, затем снова запустите `./setup-dev-env.sh scripts` или `templates`.
+
+### Версии компонентов
+
+Список PHP, Go, NVM, Obsidian, PhpStorm задаётся в [`config/versions.env`](config/versions.env).  
+После установки фактические версии пишутся в `~/.config/phpdev/installed.env`.
+
+Чтобы добавить новую поддерживаемую версию PHP в полную установку — допишите её в `PHP_SUPPORTED` в `versions.env` (пакет должен быть в PPA ondrej/php).
+
+Или установите точечно без правки конфига:
+
+```bash
+./setup-dev-env.sh lang list
+./setup-dev-env.sh lang add php 8.5
+./setup-dev-env.sh lang update php
+./setup-dev-env.sh lang update go
+./setup-dev-env.sh lang add node 22
+./setup-dev-env.sh lang default php 8.4
+./setup-dev-env.sh lang remove php 8.1
+```
+
+### Базы данных: обновление
+
+```bash
+./setup-dev-env.sh db status
+./setup-dev-env.sh db update                  # все установленные
+./setup-dev-env.sh db update mariadb
+./setup-dev-env.sh db update --dry-run
+./setup-dev-env.sh db update postgresql --major   # смена major
+./setup-dev-env.sh db update redis --no-backup    # без бэкапа (осторожно)
+
+# алиас после установки scripts:
+dev db-update mariadb
+```
+
+Перед обновлением MariaDB/PostgreSQL/Redis создаётся бэкап в `~/.config-backups/db/`.  
+Смена major PostgreSQL без `--major` блокируется.
+
 ### `dev` — управление сервисами
 
 ```bash
@@ -164,7 +217,6 @@ dev web                # Только web (Apache/Nginx + PHP-FPM)
 dev db                 # Только БД (MariaDB + PostgreSQL)
 dev cache              # Только кэш (Redis + Memcached)
 
-dev php 7.4            # Переключить PHP CLI на версию 7.4
 dev php 8.2            # Переключить PHP CLI на версию 8.2
 dev php 8.4            # Переключить PHP CLI на версию 8.4
 ```
@@ -174,7 +226,7 @@ dev php 8.4            # Переключить PHP CLI на версию 8.4
 ```bash
 new-project site.test                        # Базовый проект (Nginx + PHP 8.2)
 new-project site.test --php=8.4              # С PHP 8.4
-new-project site.test --php=7.4              # С PHP 7.4 (legacy)
+new-project site.test --php=8.1              # С PHP 8.1
 new-project site.test --server=apache        # С Apache
 new-project site.test --type=laravel         # Laravel проект
 new-project site.test --type=symfony         # Symfony проект
@@ -238,30 +290,54 @@ vhost delete nginx mysite        # Удалить Nginx виртуальный �
 ## 📁 Структура директорий
 
 ```
+phpdev/
+├── bin/setup-dev-env             # CLI entrypoint
+├── setup-dev-env.sh              # совместимость → lib/load.sh + main
+├── config/versions.env
+├── lib/
+│   ├── load.sh                   # подключает все модули
+│   ├── common.sh                 # log, prechecks, state, versions
+│   ├── cli.sh                    # menu, help, main, run_full_install
+│   ├── lang.sh                   # lang list|add|update|…
+│   ├── db.sh                     # db status|update
+│   ├── profiles.sh
+│   ├── util.sh                   # health, export/import
+│   └── install/
+│       ├── system.sh             # apt base, zsh, git, ssh
+│       ├── web.sh                # apache, nginx
+│       ├── php.sh
+│       ├── database.sh
+│       ├── tools.sh              # go, nvm, docker, composer, …
+│       ├── apps.sh
+│       └── scripts.sh            # установка scripts/ + templates/
+├── profiles/
+│   ├── minimal.conf
+│   ├── web.conf
+│   ├── full.conf
+│   └── desktop.conf
+├── scripts/{dev,new-project,vhost}
+├── templates/{apache,nginx}/vhost.conf
+├── IMPROVEMENT_PLAN.md
+├── LICENSE
+└── README.md
+
 ~/
-├── www/                          # Проекты
-│   ├── test-apache.test/
-│   │   └── public/
-│   │       └── index.php
-│   ├── test-nginx.test/
-│   │   └── public/
-│   │       └── index.php
-│   └── <ваши проекты>/
-│
-├── go/                           # Go workspace
-│   └── bin/
-│       └── MailHog
-│
-├── .config-backups/              # Бэкапы конфигов
-│
-├── .ssh/
-│   ├── id_ed25519               # SSH ключ
-│   ├── id_ed25519.pub           # Публичный ключ
-│   └── config                    # SSH config
-│
-├── setup-dev-env.log            # Лог установки
-├── vhost-template-apache.conf   # Шаблон Apache
-└── vhost-template-nginx.conf    # Шаблон Nginx
+├── www/
+├── .config/phpdev/installed.env
+├── .config-backups/db/
+└── vhost-template-*.conf
+```
+
+### Профили установки
+
+```bash
+./setup-dev-env.sh profile list
+./setup-dev-env.sh profile minimal
+./setup-dev-env.sh profile web --no-input
+./setup-dev-env.sh profile full
+./setup-dev-env.sh profile desktop
+# эквивалент:
+./bin/setup-dev-env profile web
 ```
 
 ---
@@ -280,10 +356,8 @@ vhost delete nginx mysite        # Удалить Nginx виртуальный �
 | PostgreSQL | 5432 |
 | Redis | 6379 |
 | Memcached | 11211 |
-| MailHog SMTP | 1025 |
-| MailHog Web | 8025 |
-| PHP 7.3 FPM | 9073 |
-| PHP 7.4 FPM | 9074 |
+| Mailpit / MailHog SMTP | 1025 |
+| Mailpit / MailHog Web | 8025 |
 | PHP 8.1 FPM | 9081 |
 | PHP 8.2 FPM | 9082 |
 | PHP 8.3 FPM | 9083 |
@@ -372,12 +446,19 @@ newgrp docker
 
 ---
 
-## 📧 MailHog
+## 📧 Mailpit
 
-MailHog перехватывает все исходящие письма.
+По умолчанию ставится **Mailpit** (`MAIL_CATCHER=mailpit` в `config/versions.env`).
 
 - **Web UI:** http://localhost:8025
 - **SMTP:** localhost:1025
+
+```bash
+./setup-dev-env.sh mailpit
+sudo systemctl start mailpit
+```
+
+Для legacy MailHog: `MAIL_CATCHER=mailhog` и `./setup-dev-env.sh mailhog`.
 
 ### Laravel `.env`
 
@@ -388,6 +469,22 @@ MAIL_PORT=1025
 MAIL_USERNAME=null
 MAIL_PASSWORD=null
 MAIL_ENCRYPTION=null
+```
+
+### Legacy PHP 7.x (Docker)
+
+```bash
+cd docker/legacy-php
+docker compose up -d
+# http://localhost:8074
+```
+
+Подробнее: [`docker/legacy-php/README.md`](docker/legacy-php/README.md).
+
+### Проверки качества
+
+```bash
+./scripts/check.sh    # bash -n, smoke CLI, shellcheck
 ```
 
 ---
@@ -482,7 +579,9 @@ mkcert -install
 
 ## 📜 Лицензия
 
-MIT
+MIT — см. [LICENSE](LICENSE).
+
+План улучшений (пошагово): [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md).
 
 ---
 
