@@ -1,0 +1,292 @@
+#!/bin/bash
+
+# Цвета
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+USERNAME=$(whoami)
+HOME_DIR="/home/$USERNAME"
+WWW_DIR="$HOME_DIR/www"
+
+show_help() {
+    echo "Создание нового проекта с настройкой окружения"
+    echo ""
+    echo "Использование: new-project <имя> [опции]"
+    echo ""
+    echo "Опции:"
+    echo "  --server=apache|nginx   Веб-сервер (по умолчанию: nginx)"
+    echo "  --php=8.1|8.2|8.3|8.4   Версия PHP (по умолчанию: 8.2)"
+    echo "  --type=laravel|symfony|plain  Тип проекта (по умолчанию: plain)"
+    echo "  --no-ssl                Не создавать SSL сертификат"
+    echo ""
+    echo "Примеры:"
+    echo "  new-project mysite.test"
+    echo "  new-project blog.test --server=apache --php=8.3"
+    echo "  new-project api.test --type=laravel"
+}
+
+# Парсинг аргументов
+PROJECT_NAME=""
+SERVER="nginx"
+PHP_VERSION="8.2"
+PROJECT_TYPE="plain"
+CREATE_SSL=true
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --server=*)
+            SERVER="${1#*=}"
+            shift
+            ;;
+        --php=*)
+            PHP_VERSION="${1#*=}"
+            shift
+            ;;
+        --type=*)
+            PROJECT_TYPE="${1#*=}"
+            shift
+            ;;
+        --no-ssl)
+            CREATE_SSL=false
+            shift
+            ;;
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        -*)
+            echo -e "${RED}Неизвестная опция: $1${NC}"
+            show_help
+            exit 1
+            ;;
+        *)
+            PROJECT_NAME="$1"
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$PROJECT_NAME" ]; then
+    echo -e "${RED}Ошибка: не указано имя проекта${NC}"
+    show_help
+    exit 1
+fi
+
+# Убираем .test если пользователь его не добавил
+if [[ ! "$PROJECT_NAME" == *.* ]]; then
+    PROJECT_NAME="${PROJECT_NAME}.test"
+fi
+
+PROJECT_DIR="$WWW_DIR/$PROJECT_NAME"
+PHP_PORT="90${PHP_VERSION//./}"
+
+echo -e "${BLUE}=== Создание проекта: $PROJECT_NAME ===${NC}"
+echo -e "  Директория: $PROJECT_DIR"
+echo -e "  Сервер: $SERVER"
+echo -e "  PHP: $PHP_VERSION (порт $PHP_PORT)"
+echo -e "  Тип: $PROJECT_TYPE"
+echo -e "  SSL: $CREATE_SSL"
+echo ""
+
+# Создание директории проекта
+mkdir -p "$PROJECT_DIR/public"
+echo "<?php phpinfo();" > "$PROJECT_DIR/public/index.php"
+echo -e "${GREEN}✓${NC} Директория создана"
+
+# Создание SSL сертификата
+if [ "$CREATE_SSL" = true ]; then
+    cd "$PROJECT_DIR"
+    if command -v mkcert &>/dev/null; then
+        mkcert "$PROJECT_NAME" "*.$PROJECT_NAME" localhost 127.0.0.1 ::1
+        sudo cp "${PROJECT_NAME}+4.pem" "/etc/ssl/certs/${PROJECT_NAME}.pem"
+        sudo cp "${PROJECT_NAME}+4-key.pem" "/etc/ssl/private/${PROJECT_NAME}-key.pem"
+        sudo chmod 644 "/etc/ssl/certs/${PROJECT_NAME}.pem"
+        sudo chmod 644 "/etc/ssl/private/${PROJECT_NAME}-key.pem"
+        rm -f "${PROJECT_NAME}+4.pem" "${PROJECT_NAME}+4-key.pem"
+        echo -e "${GREEN}✓${NC} SSL сертификат создан"
+    else
+        echo -e "${YELLOW}!${NC} mkcert не установлен, SSL пропущен"
+        CREATE_SSL=false
+    fi
+fi
+
+# Создание конфига для Nginx
+if [ "$SERVER" = "nginx" ]; then
+    CONF_FILE="/etc/nginx/sites-available/$PROJECT_NAME"
+    
+    if [ "$CREATE_SSL" = true ]; then
+        sudo tee "$CONF_FILE" > /dev/null << NGINXCONF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $PROJECT_NAME *.$PROJECT_NAME;
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+
+    root $PROJECT_DIR/public;
+    index index.php index.html;
+    server_name $PROJECT_NAME *.$PROJECT_NAME;
+
+    ssl_certificate      /etc/ssl/certs/${PROJECT_NAME}.pem;
+    ssl_certificate_key  /etc/ssl/private/${PROJECT_NAME}-key.pem;
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$query_string;
+    }
+
+    location ~ \.php\$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass 127.0.0.1:$PHP_PORT;
+    }
+}
+NGINXCONF
+    else
+        sudo tee "$CONF_FILE" > /dev/null << NGINXCONF
+server {
+    listen 80;
+    listen [::]:80;
+    
+    root $PROJECT_DIR/public;
+    index index.php index.html;
+    server_name $PROJECT_NAME *.$PROJECT_NAME;
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$query_string;
+    }
+
+    location ~ \.php\$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass 127.0.0.1:$PHP_PORT;
+    }
+}
+NGINXCONF
+    fi
+    
+    sudo ln -sf "$CONF_FILE" "/etc/nginx/sites-enabled/$PROJECT_NAME"
+    sudo nginx -t && sudo systemctl reload nginx
+    echo -e "${GREEN}✓${NC} Nginx конфиг создан и активирован"
+fi
+
+# Создание конфига для Apache
+if [ "$SERVER" = "apache" ]; then
+    CONF_FILE="/etc/apache2/sites-available/$PROJECT_NAME.conf"
+    
+    # Apache: 8080/8443 (Nginx занимает 80/443)
+    sudo tee "$CONF_FILE" > /dev/null << APACHECONF
+Define ROOT "$PROJECT_DIR/public"
+Define SITE "$PROJECT_NAME"
+
+<VirtualHost *:8080>
+    DocumentRoot "\${ROOT}"
+    ServerName \${SITE}
+    ServerAlias *.\${SITE}
+    <Directory "\${ROOT}">
+        AllowOverride All
+        Require all granted
+        Options Indexes FollowSymLinks
+        DirectoryIndex index.php
+        <IfModule mpm_itk_module>
+            AssignUserId $USERNAME $USERNAME
+        </IfModule>
+    </Directory>
+    
+    # PHP $PHP_VERSION через FPM (порт $PHP_PORT)
+    <FilesMatch \.php$>
+        SetHandler "proxy:fcgi://127.0.0.1:$PHP_PORT"
+    </FilesMatch>
+</VirtualHost>
+APACHECONF
+
+    if [ "$CREATE_SSL" = true ]; then
+        sudo tee -a "$CONF_FILE" > /dev/null << APACHESSL
+
+<VirtualHost *:8443>
+    DocumentRoot "\${ROOT}"
+    ServerName \${SITE}
+    ServerAlias *.\${SITE}
+    <Directory "\${ROOT}">
+        AllowOverride All
+        Require all granted
+        Options Indexes FollowSymLinks
+        DirectoryIndex index.php
+        <IfModule mpm_itk_module>
+            AssignUserId $USERNAME $USERNAME
+        </IfModule>
+    </Directory>
+    
+    # PHP $PHP_VERSION через FPM (порт $PHP_PORT)
+    <FilesMatch \.php$>
+        SetHandler "proxy:fcgi://127.0.0.1:$PHP_PORT"
+    </FilesMatch>
+    
+    SSLEngine on
+    SSLCertificateFile      "/etc/ssl/certs/${PROJECT_NAME}.pem"
+    SSLCertificateKeyFile   "/etc/ssl/private/${PROJECT_NAME}-key.pem"
+</VirtualHost>
+APACHESSL
+    fi
+    
+    sudo a2enmod proxy_fcgi 2>/dev/null || true
+    sudo a2ensite "$PROJECT_NAME.conf"
+    sudo systemctl reload apache2
+    echo -e "${GREEN}✓${NC} Apache конфиг создан и активирован"
+fi
+
+# Добавление в /etc/hosts
+if ! grep -q "$PROJECT_NAME" /etc/hosts; then
+    echo "127.0.0.1 $PROJECT_NAME www.$PROJECT_NAME" | sudo tee -a /etc/hosts > /dev/null
+    echo -e "${GREEN}✓${NC} Добавлено в /etc/hosts"
+fi
+
+# Создание проекта по типу
+case "$PROJECT_TYPE" in
+    laravel)
+        if command -v laravel &>/dev/null; then
+            cd "$WWW_DIR"
+            rm -rf "$PROJECT_DIR"
+            laravel new "$PROJECT_NAME"
+            echo -e "${GREEN}✓${NC} Laravel проект создан"
+        else
+            echo -e "${YELLOW}!${NC} Laravel Installer не установлен"
+        fi
+        ;;
+    symfony)
+        if command -v symfony &>/dev/null; then
+            cd "$WWW_DIR"
+            rm -rf "$PROJECT_DIR"
+            symfony new "$PROJECT_NAME" --webapp
+            echo -e "${GREEN}✓${NC} Symfony проект создан"
+        else
+            echo -e "${YELLOW}!${NC} Symfony CLI не установлен"
+        fi
+        ;;
+esac
+
+echo ""
+echo -e "${GREEN}=== Проект создан успешно! ===${NC}"
+echo ""
+if [ "$SERVER" = "apache" ]; then
+    if [ "$CREATE_SSL" = true ]; then
+        echo -e "  URL: ${BLUE}https://$PROJECT_NAME:8443${NC}"
+        echo -e "  URL: ${BLUE}http://$PROJECT_NAME:8080${NC}"
+    else
+        echo -e "  URL: ${BLUE}http://$PROJECT_NAME:8080${NC}"
+    fi
+else
+    if [ "$CREATE_SSL" = true ]; then
+        echo -e "  URL: ${BLUE}https://$PROJECT_NAME${NC}"
+    else
+        echo -e "  URL: ${BLUE}http://$PROJECT_NAME${NC}"
+    fi
+fi
+echo -e "  Директория: $PROJECT_DIR"
+echo -e "  PHP-FPM: $PHP_VERSION → 127.0.0.1:$PHP_PORT"
+echo ""
+echo -e "${YELLOW}Не забудьте запустить сервисы:${NC} dev start"

@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: bash -n + smoke + shellcheck
+        run: |
+          chmod +x setup-dev-env.sh bin/setup-dev-env scripts/check.sh scripts/*
+          ./scripts/check.sh
