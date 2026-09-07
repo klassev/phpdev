@@ -49,7 +49,7 @@ install_php_version() {
     
     print_info "Установка PHP $version..."
     
-    pkgs=(
+    local wanted=(
         "php${version}-cli"
         "php${version}-fpm"
         "php${version}-common"
@@ -73,7 +73,23 @@ install_php_version() {
     
     # PHP 7.4 требует отдельный пакет json; в 8.x json встроен
     if [ "$version" = "7.4" ]; then
-        pkgs+=("php${version}-json")
+        wanted+=("php${version}-json")
+    fi
+    
+    # Ставим только пакеты, реально есть в apt (напр. php8.5-opcache отсутствует — opcache в common/cli)
+    pkgs=()
+    local pkg
+    for pkg in "${wanted[@]}"; do
+        if apt-cache show "$pkg" &>/dev/null; then
+            pkgs+=("$pkg")
+        else
+            print_warning "Пакет недоступен, пропускаем: $pkg"
+        fi
+    done
+    
+    if [ ${#pkgs[@]} -eq 0 ]; then
+        print_error "Нет доступных пакетов для PHP $version"
+        return 1
     fi
     
     if ! sudo apt install -y "${pkgs[@]}"; then
