@@ -1,1 +1,38 @@
-.idea
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Logs
+*.log
+setup-dev-env.log
+
+# Downloads / packages
+*.deb
+*.tar.gz
+*.tgz
+*.zip
+chrome.deb
+cursor.deb
+obsidian.deb
+dbviewer.deb
+phpstorm.tar.gz
+
+# Local backups / exports (outside home, if copied into repo)
+.config-backups/
+dev-env-export/
+backups/
+
+# Local state / secrets
+.env
+.env.*
+!.env.example
+config/local.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local monolith backup
+setup-dev-env.monolith.bak.sh

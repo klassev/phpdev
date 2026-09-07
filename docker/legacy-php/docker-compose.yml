@@ -1,0 +1,29 @@
+# Legacy PHP 7.4 для проектов, которым нужен EOL PHP на Ubuntu 24.04
+# Использование:
+#   cd docker/legacy-php && docker compose up -d
+#   # сайт: http://localhost:8074
+#
+# Смонтируйте свой проект:
+#   WWW_HOST_PATH=/home/you/www/old-site docker compose up -d
+
+services:
+  php74:
+    image: php:7.4-apache
+    container_name: phpdev-legacy-php74
+    ports:
+      - "8074:80"
+    volumes:
+      - ${WWW_HOST_PATH:-./public}:/var/www/html
+    environment:
+      - APACHE_DOCUMENT_ROOT=/var/www/html
+    restart: unless-stopped
+
+  php74-fpm:
+    image: php:7.4-fpm
+    container_name: phpdev-legacy-php74-fpm
+    profiles: ["fpm"]
+    volumes:
+      - ${WWW_HOST_PATH:-./public}:/var/www/html
+    ports:
+      - "9074:9000"
+    restart: unless-stopped
