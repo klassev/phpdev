@@ -48,7 +48,8 @@ create_test_hosts() {
     
     local apache_host="test-apache.test"
     local nginx_host="test-nginx.test"
-    local php_port="9084"  # PHP 8.4
+    local php_ver="${PHP_DEFAULT:-8.5}"
+    local php_port="90${php_ver//./}"  # 8.5 → 9085
     
     # Создание директорий
     mkdir -p "$WWW_DIR/$apache_host/public"
@@ -126,7 +127,7 @@ Define SITE "$apache_host"
         </IfModule>
     </Directory>
     
-    # Использование PHP 8.4 через FPM
+    # Использование PHP через FPM (версия из PHP_DEFAULT)
     <FilesMatch \.php$>
         SetHandler "proxy:fcgi://127.0.0.1:$php_port"
     </FilesMatch>
@@ -146,7 +147,7 @@ Define SITE "$apache_host"
         </IfModule>
     </Directory>
     
-    # Использование PHP 8.4 через FPM
+    # Использование PHP через FPM (версия из PHP_DEFAULT)
     <FilesMatch \.php$>
         SetHandler "proxy:fcgi://127.0.0.1:$php_port"
     </FilesMatch>
@@ -243,12 +244,12 @@ NGINXCONF
     # --- Итоговая информация ---
     print_section "Тестовые хосты созданы"
     
-    echo -e "${GREEN}Apache + PHP 8.4 (порты 8080/8443):${NC}"
+    echo -e "${GREEN}Apache + PHP $php_ver (порты 8080/8443):${NC}"
     echo -e "  HTTP:      ${CYAN}http://$apache_host:8080${NC}"
     echo -e "  HTTPS:     ${CYAN}https://$apache_host:8443${NC}"
     echo -e "  Директория: $WWW_DIR/$apache_host/public"
     echo ""
-    echo -e "${GREEN}Nginx + PHP 8.4 (порты 80/443):${NC}"
+    echo -e "${GREEN}Nginx + PHP $php_ver (порты 80/443):${NC}"
     echo -e "  HTTP:      ${CYAN}http://$nginx_host${NC}"
     echo -e "  HTTPS:     ${CYAN}https://$nginx_host${NC}"
     echo -e "  Директория: $WWW_DIR/$nginx_host/public"
@@ -259,8 +260,8 @@ NGINXCONF
     echo -e "  ${GREEN}dev start${NC}"
     echo ""
     echo -e "${YELLOW}Или по отдельности:${NC}"
-    echo -e "  ${GREEN}sudo systemctl start apache2 php8.4-fpm${NC}"
-    echo -e "  ${GREEN}sudo systemctl start nginx php8.4-fpm${NC}"
+    echo -e "  ${GREEN}sudo systemctl start apache2 php${php_ver}-fpm${NC}"
+    echo -e "  ${GREEN}sudo systemctl start nginx php${php_ver}-fpm${NC}"
     
     add_recommendation "Apache: http://$apache_host:8080 | Nginx: https://$nginx_host"
 }

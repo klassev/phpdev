@@ -22,7 +22,7 @@ show_lang_help() {
     echo "  $0 lang add php 8.5"
     echo "  $0 lang update go"
     echo "  $0 lang add node 22"
-    echo "  $0 lang default php 8.4"
+    echo "  $0 lang default php 8.5"
 }
 
 load_nvm() {
@@ -142,7 +142,7 @@ lang_update_php() {
 lang_default_php() {
     local ver="${1:-}"
     if [ -z "$ver" ]; then
-        print_error "Укажите версию: lang default php 8.4"
+        print_error "Укажите версию: lang default php 8.5"
         return 1
     fi
     local php_path="/usr/bin/php${ver}"

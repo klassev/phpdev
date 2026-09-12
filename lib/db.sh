@@ -109,7 +109,7 @@ db_pg_major_installed() {
 db_pg_major_candidate() {
     local cand
     cand=$(db_apt_candidate postgresql)
-    # примеры: 16+257build1.1, 15.8-0ubuntu0.24.04.1
+    # примеры: 16+257build1.1, 15.8-0ubuntu0.26.04.1
     echo "$cand" | grep -oE '^[0-9]+' | head -1
 }
 

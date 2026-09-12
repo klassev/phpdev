@@ -43,14 +43,15 @@ install_base_packages() {
         synaptic \
         gdebi \
         dconf-editor \
-        p7zip-rar \
+        7zip \
+        7zip-rar \
         arj \
         gnome-shell-extensions \
         libreoffice \
         transmission \
         vlc \
         gimp \
-        neofetch \
+        fastfetch \
         curl \
         wget \
         fonts-powerline

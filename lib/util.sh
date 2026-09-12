@@ -76,7 +76,7 @@ health_check() {
     echo ""
     echo -e "${CYAN}=== Xdebug ===${NC}"
     local xd=false
-    for ver in ${PHP_SUPPORTED:-8.1 8.2 8.3 8.4}; do
+    for ver in ${PHP_SUPPORTED:-8.1 8.2 8.3 8.4 8.5}; do
         if [ -f "/etc/php/${ver}/mods-available/xdebug.ini" ] || ls /etc/php/"$ver"/mods-available/xdebug.ini &>/dev/null; then
             echo -e "  ${GREEN}✓${NC} xdebug.ini для PHP $ver"
             xd=true
@@ -107,7 +107,7 @@ health_check() {
     check_port 11211 "Memcached"
     check_port 1025 "Mail SMTP"
     check_port 8025 "Mail UI"
-    for ver in ${PHP_SUPPORTED:-8.1 8.2 8.3 8.4}; do
+    for ver in ${PHP_SUPPORTED:-8.1 8.2 8.3 8.4 8.5}; do
         local p="90${ver//./}"
         check_port "$p" "PHP $ver FPM"
     done

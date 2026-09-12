@@ -57,7 +57,7 @@ load_versions_config() {
     # Defaults, если файла нет или ключ не задан
     PHP_SUPPORTED="${PHP_SUPPORTED:-8.1 8.2 8.3 8.4 8.5}"
     PHP_LEGACY="${PHP_LEGACY:-7.3 7.4}"
-    PHP_DEFAULT="${PHP_DEFAULT:-8.4}"
+    PHP_DEFAULT="${PHP_DEFAULT:-8.5}"
     GO_VERSION="${GO_VERSION:-1.26.1}"
     MKCERT_VERSION="${MKCERT_VERSION:-v1.4.4}"
     NVM_VERSION="${NVM_VERSION:-v0.40.3}"
@@ -227,12 +227,12 @@ check_ubuntu_version() {
             exit 1
         fi
         
-        # Проверка версии (24.04 или выше)
+        # Проверка версии (26.04 LTS или выше)
         local version_num=$(echo "$VERSION_ID" | cut -d. -f1)
-        if [[ "$version_num" -lt 24 ]]; then
-            print_warning "Скрипт оптимизирован для Ubuntu 24.04+"
+        if [[ "$version_num" -lt 26 ]]; then
+            print_warning "Скрипт оптимизирован для Ubuntu 26.04 LTS (Resolute Raccoon)"
             print_info "Обнаружена версия: $VERSION_ID"
-            print_info "Некоторые пакеты могут быть недоступны"
+            print_info "Некоторые пакеты могут быть недоступны или переименованы"
             read -p "Продолжить? (y/n): " -n 1 -r
             echo
             if [[ ! $REPLY =~ ^[Yy]$ ]]; then

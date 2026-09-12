@@ -1,6 +1,6 @@
-# 🚀 Setup Dev Environment для Ubuntu 24.04
+# 🚀 Setup Dev Environment для Ubuntu 26.04.1 LTS
 
-Автоматизированный скрипт настройки полного dev-окружения для веб-разработки на Ubuntu 24.04.
+Автоматизированный скрипт настройки полного dev-окружения для веб-разработки на Ubuntu 26.04.1 LTS (Resolute Raccoon).
 
 ## 📋 Что устанавливается
 
@@ -19,13 +19,13 @@
 
 | Версия | PHP-FPM порт | Статус |
 |--------|--------------|--------|
-| PHP 8.1 | 9081 | Security fixes до ноября 2025 |
-| PHP 8.2 | 9082 | Активная поддержка |
+| PHP 8.1 | 9081 | EOL (через PPA ondrej/php) |
+| PHP 8.2 | 9082 | Security fixes до декабря 2026 |
 | PHP 8.3 | 9083 | Активная поддержка |
 | PHP 8.4 | 9084 | Активная поддержка |
-| PHP 8.5 | 9085 | Активная поддержка |
+| PHP 8.5 | 9085 | Активная поддержка (по умолчанию в 26.04) |
 
-> **Политика PHP 7.x:** на Ubuntu 24.04 пакеты PHP 7.3/7.4 через apt обычно **недоступны**. Команды `php7.3` / `php7.4` — best-effort; для legacy-проектов используйте **Docker**. Шаблон Compose появится в этапе 7 плана улучшений.
+> **Политика PHP 7.x:** на Ubuntu 26.04 пакеты PHP 7.3/7.4 через apt обычно **недоступны**. Команды `php7.3` / `php7.4` — best-effort; для legacy-проектов используйте **Docker** (`docker/legacy-php/`).
 
 ### Базы данных и кэш
 - **MariaDB** — MySQL-совместимая БД
@@ -106,7 +106,7 @@ chmod +x setup-dev-env.sh
 ./setup-dev-env.sh apache php8.2    # Apache + PHP 8.2
 ./setup-dev-env.sh php-fpm          # Настройка PHP-FPM
 ./setup-dev-env.sh xdebug           # Настройка Xdebug
-# php7.3 / php7.4 — обычно недоступны на 24.04; для legacy — Docker
+# php7.3 / php7.4 — обычно недоступны на 26.04; для legacy — Docker
 
 # Базы данных
 ./setup-dev-env.sh mariadb
@@ -184,7 +184,7 @@ chmod +x setup-dev-env.sh
 ./setup-dev-env.sh lang update php
 ./setup-dev-env.sh lang update go
 ./setup-dev-env.sh lang add node 22
-./setup-dev-env.sh lang default php 8.4
+./setup-dev-env.sh lang default php 8.5
 ./setup-dev-env.sh lang remove php 8.1
 ```
 
@@ -218,14 +218,14 @@ dev db                 # Только БД (MariaDB + PostgreSQL)
 dev cache              # Только кэш (Redis + Memcached)
 
 dev php 8.2            # Переключить PHP CLI на версию 8.2
-dev php 8.4            # Переключить PHP CLI на версию 8.4
+dev php 8.5            # Переключить PHP CLI на версию 8.5
 ```
 
 ### `new-project` — создание проекта
 
 ```bash
 new-project site.test                        # Базовый проект (Nginx + PHP 8.2)
-new-project site.test --php=8.4              # С PHP 8.4
+new-project site.test --php=8.5              # С PHP 8.5
 new-project site.test --php=8.1              # С PHP 8.1
 new-project site.test --server=apache        # С Apache
 new-project site.test --type=laravel         # Laravel проект
@@ -280,10 +280,10 @@ vhost delete nginx mysite        # Удалить Nginx виртуальный �
 
 | Хост | Сервер | PHP | URL |
 |------|--------|-----|-----|
-| test-apache.test | Apache | 8.4 | http://test-apache.test:8080 |
-| test-apache.test | Apache | 8.4 | https://test-apache.test:8443 |
-| test-nginx.test | Nginx | 8.4 | http://test-nginx.test |
-| test-nginx.test | Nginx | 8.4 | https://test-nginx.test |
+| test-apache.test | Apache | 8.5 | http://test-apache.test:8080 |
+| test-apache.test | Apache | 8.5 | https://test-apache.test:8443 |
+| test-nginx.test | Nginx | 8.5 | http://test-nginx.test |
+| test-nginx.test | Nginx | 8.5 | https://test-nginx.test |
 
 ---
 
@@ -317,7 +317,7 @@ phpdev/
 │   └── desktop.conf
 ├── scripts/{dev,new-project,vhost}
 ├── templates/{apache,nginx}/vhost.conf
-├── IMPROVEMENT_PLAN.md
+├── docker/legacy-php/            # Compose для PHP 7.4
 ├── LICENSE
 └── README.md
 
@@ -563,8 +563,8 @@ docker ps
 ### PHP-FPM не запускается
 
 ```bash
-sudo systemctl status php8.4-fpm
-sudo journalctl -u php8.4-fpm
+sudo systemctl status php8.5-fpm
+sudo journalctl -u php8.5-fpm
 ```
 
 ### SSL сертификат не работает

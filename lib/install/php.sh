@@ -24,8 +24,8 @@ install_php_version() {
     esac
     
     if [[ "$version" == 7.* ]]; then
-        print_warning "PHP $version — EOL и на Ubuntu 24.04 через apt обычно недоступен"
-        print_info "Для legacy-проектов предпочтителен Docker (см. IMPROVEMENT_PLAN.md, этап 7)"
+        print_warning "PHP $version — EOL и на Ubuntu 26.04 через apt обычно недоступен"
+        print_info "Для legacy-проектов предпочтителен Docker (см. docker/legacy-php/)"
     fi
     
     print_section "Установка PHP $version"
@@ -129,7 +129,7 @@ install_php() {
     
     print_success "Установка PHP завершена"
     print_info "Для переключения версии PHP: sudo update-alternatives --config php"
-    print_info "PHP 7.x на Ubuntu 24.04 через apt не ставится — для legacy используйте Docker"
+    print_info "PHP 7.x на Ubuntu 26.04 через apt не ставится — для legacy используйте Docker"
     
     if [ "$failed" -ne 0 ]; then
         print_warning "Некоторые версии PHP установить не удалось — см. лог выше"
@@ -146,7 +146,7 @@ configure_php_fpm() {
         print_section "Настройка PHP-FPM (${versions[*]})"
     fi
     
-    # Порты: 8.1→9081 … 8.4→9084; legacy 7.x→907x если установлены
+    # Порты: 8.1→9081 … 8.5→9085; legacy 7.x→907x если установлены
     
     local configured=0
     for version in "${versions[@]}"; do

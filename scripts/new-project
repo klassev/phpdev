@@ -18,20 +18,20 @@ show_help() {
     echo ""
     echo "Опции:"
     echo "  --server=apache|nginx   Веб-сервер (по умолчанию: nginx)"
-    echo "  --php=8.1|8.2|8.3|8.4   Версия PHP (по умолчанию: 8.2)"
+    echo "  --php=8.1|8.2|8.3|8.4|8.5   Версия PHP (по умолчанию: 8.5)"
     echo "  --type=laravel|symfony|plain  Тип проекта (по умолчанию: plain)"
     echo "  --no-ssl                Не создавать SSL сертификат"
     echo ""
     echo "Примеры:"
     echo "  new-project mysite.test"
-    echo "  new-project blog.test --server=apache --php=8.3"
+    echo "  new-project blog.test --server=apache --php=8.4"
     echo "  new-project api.test --type=laravel"
 }
 
 # Парсинг аргументов
 PROJECT_NAME=""
 SERVER="nginx"
-PHP_VERSION="8.2"
+PHP_VERSION="8.5"
 PROJECT_TYPE="plain"
 CREATE_SSL=true
 

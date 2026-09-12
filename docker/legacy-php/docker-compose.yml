@@ -1,4 +1,4 @@
-# Legacy PHP 7.4 для проектов, которым нужен EOL PHP на Ubuntu 24.04
+# Legacy PHP 7.4 для проектов, которым нужен EOL PHP на Ubuntu 26.04
 # Использование:
 #   cd docker/legacy-php && docker compose up -d
 #   # сайт: http://localhost:8074

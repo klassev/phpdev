@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 
 show_help() {
-    echo -e "${GREEN}Настройка DEV окружения для Ubuntu 24.04${NC}"
+    echo -e "${GREEN}Настройка DEV окружения для Ubuntu 26.04 LTS${NC}"
     echo ""
     echo "Использование: $0 [опция]"
     echo ""
@@ -19,7 +19,7 @@ show_help() {
     echo -e "${YELLOW}PHP:${NC}"
     echo "  php              - Установить PHP (${PHP_SUPPORTED:-8.1–8.5})"
     echo "  php8.1|php8.2|php8.3|php8.4|php8.5 - Конкретная версия (+ FPM)"
-    echo "  php7.3|php7.4    - Legacy best-effort (обычно недоступны на 24.04; лучше Docker)"
+    echo "  php7.3|php7.4    - Legacy best-effort (обычно недоступны на 26.04; лучше Docker)"
     echo "  php-fpm          - Настроить PHP-FPM для Nginx"
     echo "  xdebug           - Настроить Xdebug"
     echo ""
@@ -49,7 +49,7 @@ show_help() {
     echo "  mailpit-service  - systemd Mailpit"
     echo "  new-project      - Установить скрипт 'new-project'"
     echo "  vhost-script     - Установить скрипт 'vhost' для управления виртуальными хостами"
-    echo "  test-hosts       - Создать тестовые хосты (Apache+PHP8.4, Nginx+PHP8.4)"
+    echo "  test-hosts       - Создать тестовые хосты (Apache/Nginx + PHP_DEFAULT)"
     echo "  templates        - Создать шаблоны VirtualHost"
     echo "  scripts          - Установить все скрипты (dev, new-project, vhost)"
     echo ""
@@ -144,7 +144,7 @@ show_menu() {
     while true; do
         clear
         echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${GREEN}║         НАСТРОЙКА DEV ОКРУЖЕНИЯ ДЛЯ UBUNTU 24.04               ║${NC}"
+        echo -e "${GREEN}║         НАСТРОЙКА DEV ОКРУЖЕНИЯ ДЛЯ UBUNTU 26.04               ║${NC}"
         echo -e "${GREEN}╠════════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${GREEN}║${NC}                                                                ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  ${CYAN}УСТАНОВКА:${NC}                                                   ${GREEN}║${NC}"
@@ -292,7 +292,7 @@ main() {
     # Запуск проверок перед установкой
     run_prechecks
     
-    print_section "Настройка DEV окружения для Ubuntu 24.04"
+    print_section "Настройка DEV окружения для Ubuntu 26.04 LTS"
     print_info "Пользователь: $USERNAME"
     print_info "Домашняя директория: $HOME_DIR"
     print_info "WWW директория: $WWW_DIR"
