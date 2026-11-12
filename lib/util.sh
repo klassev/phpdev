@@ -65,10 +65,14 @@ health_check() {
     echo ""
     echo -e "${CYAN}=== PHP-FPM ===${NC}"
     local fpm_found=false unit ver
+    # /lib и /usr/lib на современных Ubuntu часто оба есть (symlink/копия) — дедуп по имени unit
+    local -A seen_fpm=()
     for unit in /lib/systemd/system/php*-fpm.service /usr/lib/systemd/system/php*-fpm.service; do
         [ -f "$unit" ] || continue
-        fpm_found=true
         ver=$(basename "$unit" .service)
+        [ -n "${seen_fpm[$ver]:-}" ] && continue
+        seen_fpm[$ver]=1
+        fpm_found=true
         check_service "$ver" "$ver"
     done
     [ "$fpm_found" = true ] || echo -e "  ${YELLOW}○${NC} PHP-FPM unit-файлы не найдены"

@@ -17,7 +17,6 @@ chrome.deb
 cursor.deb
 obsidian.deb
 dbviewer.deb
-phpstorm.tar.gz
 
 # Local backups / exports (outside home, if copied into repo)
 .config-backups/

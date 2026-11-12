@@ -55,8 +55,8 @@ load_versions_config() {
     local cfg="$SCRIPT_DIR/config/versions.env"
     
     # Defaults, если файла нет или ключ не задан
-    PHP_SUPPORTED="${PHP_SUPPORTED:-8.1 8.2 8.3 8.4 8.5}"
-    PHP_LEGACY="${PHP_LEGACY:-7.3 7.4}"
+    PHP_SUPPORTED="${PHP_SUPPORTED:-7.4 8.1 8.2 8.3 8.4 8.5}"
+    PHP_LEGACY="${PHP_LEGACY:-7.3}"
     PHP_DEFAULT="${PHP_DEFAULT:-8.5}"
     GO_VERSION="${GO_VERSION:-1.26.1}"
     MKCERT_VERSION="${MKCERT_VERSION:-v1.4.4}"
@@ -64,7 +64,6 @@ load_versions_config() {
     MAIL_CATCHER="${MAIL_CATCHER:-mailpit}"
     MAILPIT_VERSION="${MAILPIT_VERSION:-v1.24.1}"
     OBSIDIAN_VERSION="${OBSIDIAN_VERSION:-1.5.12}"
-    PHPSTORM_VERSION="${PHPSTORM_VERSION:-2024.3.1.1}"
     
     if [ -f "$cfg" ]; then
         # shellcheck disable=SC1090
@@ -72,11 +71,6 @@ load_versions_config() {
         # shellcheck source=config/versions.env
         source "$cfg"
         set -euo pipefail
-    fi
-    
-    # Собрать URL PhpStorm, если не задан явно
-    if [ -z "${PHPSTORM_URL:-}" ]; then
-        PHPSTORM_URL="https://download.jetbrains.com/webide/PhpStorm-${PHPSTORM_VERSION}.tar.gz"
     fi
     
     # Массивы из пробел-разделённых строк

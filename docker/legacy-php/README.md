@@ -1,6 +1,7 @@
 # Legacy PHP 7.4 (Docker)
 
-На Ubuntu 26.04 LTS пакеты PHP 7.x через apt обычно недоступны. Этот Compose поднимает PHP 7.4 в контейнере.
+PHP 7.4 на хосте ставится через `./setup-dev-env.sh php7.4` (packages.sury.org).
+Этот Compose — изолированный вариант (или для PHP 7.3 / старых окружений без apt).
 
 ```bash
 cd docker/legacy-php

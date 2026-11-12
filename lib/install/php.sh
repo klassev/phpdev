@@ -2,11 +2,41 @@
 # shellcheck shell=bash
 
 ensure_php_repo() {
-    if ! apt-cache show php8.2-fpm &>/dev/null; then
-        print_info "Добавление репозитория ppa:ondrej/php..."
-        sudo add-apt-repository -y ppa:ondrej/php
-        sudo apt update
+    # Ubuntu 26.04+: PPA ondrej/php для resolute пуст; пакеты — на packages.sury.org
+    local codename
+    codename="$(lsb_release -sc 2>/dev/null || true)"
+    local sury_list="/etc/apt/sources.list.d/php-sury.list"
+    local keyring="/usr/share/keyrings/debsuryorg-archive-keyring.gpg"
+
+    # Убрать мёртвый Launchpad PPA (ломает apt update на resolute)
+    if ls /etc/apt/sources.list.d/ondrej*php* &>/dev/null \
+        || grep -Rqs 'ppa.launchpadcontent.net/ondrej/php' /etc/apt/sources.list.d/ 2>/dev/null; then
+        print_info "Удаление устаревшего ppa:ondrej/php..."
+        sudo add-apt-repository --remove -y ppa:ondrej/php 2>/dev/null || true
+        sudo rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php-*.sources \
+                   /etc/apt/sources.list.d/ondrej-ubuntu-php-*.list \
+                   /etc/apt/sources.list.d/ondrej-php*.list 2>/dev/null || true
     fi
+
+    if apt-cache show php8.2-fpm &>/dev/null; then
+        return 0
+    fi
+
+    print_info "Добавление репозитория packages.sury.org/php (${codename:-unknown})..."
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y lsb-release ca-certificates curl
+    if [ ! -f "$keyring" ]; then
+        local deb="/tmp/debsuryorg-archive-keyring.deb"
+        if ! download_file "https://packages.sury.org/debsuryorg-archive-keyring.deb" \
+            "$deb" "debsuryorg-archive-keyring"; then
+            print_error "Не удалось скачать ключ packages.sury.org"
+            return 1
+        fi
+        sudo dpkg -i "$deb"
+        rm -f "$deb"
+    fi
+    echo "deb [signed-by=${keyring}] https://packages.sury.org/php/ ${codename} main" \
+        | sudo tee "$sury_list" > /dev/null
+    sudo apt-get update
 }
 
 install_php_version() {
@@ -24,8 +54,7 @@ install_php_version() {
     esac
     
     if [[ "$version" == 7.* ]]; then
-        print_warning "PHP $version — EOL и на Ubuntu 26.04 через apt обычно недоступен"
-        print_info "Для legacy-проектов предпочтителен Docker (см. docker/legacy-php/)"
+        print_warning "PHP $version — EOL; ставим через packages.sury.org (альтернатива: docker/legacy-php/)"
     fi
     
     print_section "Установка PHP $version"
@@ -129,7 +158,7 @@ install_php() {
     
     print_success "Установка PHP завершена"
     print_info "Для переключения версии PHP: sudo update-alternatives --config php"
-    print_info "PHP 7.x на Ubuntu 26.04 через apt не ставится — для legacy используйте Docker"
+    print_info "PHP 7.3 (PHP_LEGACY) — отдельно: $0 php7.3 или Docker docker/legacy-php/"
     
     if [ "$failed" -ne 0 ]; then
         print_warning "Некоторые версии PHP установить не удалось — см. лог выше"

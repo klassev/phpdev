@@ -13,19 +13,20 @@
 > ⚡ Apache и Nginx могут работать одновременно!
 
 ### PHP
-- **PHP 8.1–8.5** — через apt (PPA ondrej/php) с PHP-FPM
-- **Xdebug** — отладка для PhpStorm / Cursor
+- **PHP 7.4, 8.1–8.5** — через apt (`packages.sury.org`) с PHP-FPM
+- **Xdebug** — отладка для Cursor / IDE
 - Расширения: mysql, pgsql, redis, memcached, gd, curl, mbstring, xml, zip и др.
 
 | Версия | PHP-FPM порт | Статус |
 |--------|--------------|--------|
-| PHP 8.1 | 9081 | EOL (через PPA ondrej/php) |
+| PHP 7.4 | 9074 | EOL (через packages.sury.org) |
+| PHP 8.1 | 9081 | EOL (через packages.sury.org) |
 | PHP 8.2 | 9082 | Security fixes до декабря 2026 |
 | PHP 8.3 | 9083 | Активная поддержка |
 | PHP 8.4 | 9084 | Активная поддержка |
 | PHP 8.5 | 9085 | Активная поддержка (по умолчанию в 26.04) |
 
-> **Политика PHP 7.x:** на Ubuntu 26.04 пакеты PHP 7.3/7.4 через apt обычно **недоступны**. Команды `php7.3` / `php7.4` — best-effort; для legacy-проектов используйте **Docker** (`docker/legacy-php/`).
+> **PHP 7.3:** в `PHP_LEGACY`, ставится отдельно (`php7.3`) или через Docker (`docker/legacy-php/`).
 
 ### Базы данных и кэш
 - **MariaDB** — MySQL-совместимая БД
@@ -46,7 +47,6 @@
 ### Приложения
 - **VS Code** — редактор кода
 - **Cursor** — AI редактор
-- **PhpStorm** — PHP IDE (в /opt/phpstorm)
 - **Google Chrome** — браузер
 - **Obsidian** — заметки
 - **Thunderbird** — почтовый клиент
@@ -99,14 +99,15 @@ chmod +x setup-dev-env.sh
 ./setup-dev-env.sh nginx
 
 # PHP
-./setup-dev-env.sh php              # PHP из PHP_SUPPORTED (в т.ч. 8.5)
+./setup-dev-env.sh php              # PHP из PHP_SUPPORTED (7.4, 8.1–8.5)
+./setup-dev-env.sh php7.4           # Только PHP 7.4 (+ FPM)
 ./setup-dev-env.sh php8.5           # Только PHP 8.5 (+ FPM)
 ./setup-dev-env.sh php8.2           # Только PHP 8.2 (+ настройка FPM)
 ./setup-dev-env.sh php8.4           # Только PHP 8.4
 ./setup-dev-env.sh apache php8.2    # Apache + PHP 8.2
 ./setup-dev-env.sh php-fpm          # Настройка PHP-FPM
 ./setup-dev-env.sh xdebug           # Настройка Xdebug
-# php7.3 / php7.4 — обычно недоступны на 26.04; для legacy — Docker
+# php7.3 — PHP_LEGACY / Docker
 
 # Базы данных
 ./setup-dev-env.sh mariadb
@@ -125,7 +126,7 @@ chmod +x setup-dev-env.sh
 ./setup-dev-env.sh mailhog          # legacy
 
 # Приложения
-./setup-dev-env.sh apps             # VS Code, Chrome, Cursor, PhpStorm и др.
+./setup-dev-env.sh apps             # VS Code, Chrome, Cursor, Obsidian и др.
 
 # Настройка
 ./setup-dev-env.sh git              # Настройка Git
@@ -171,10 +172,10 @@ chmod +x setup-dev-env.sh
 
 ### Версии компонентов
 
-Список PHP, Go, NVM, Obsidian, PhpStorm задаётся в [`config/versions.env`](config/versions.env).  
+Список PHP, Go, NVM, Obsidian задаётся в [`config/versions.env`](config/versions.env).  
 После установки фактические версии пишутся в `~/.config/phpdev/installed.env`.
 
-Чтобы добавить новую поддерживаемую версию PHP в полную установку — допишите её в `PHP_SUPPORTED` в `versions.env` (пакет должен быть в PPA ondrej/php).
+Чтобы добавить новую поддерживаемую версию PHP в полную установку — допишите её в `PHP_SUPPORTED` в `versions.env` (пакет должен быть в `packages.sury.org/php`).
 
 Или установите точечно без правки конфига:
 
@@ -358,6 +359,7 @@ phpdev/
 | Memcached | 11211 |
 | Mailpit / MailHog SMTP | 1025 |
 | Mailpit / MailHog Web | 8025 |
+| PHP 7.4 FPM | 9074 |
 | PHP 8.1 FPM | 9081 |
 | PHP 8.2 FPM | 9082 |
 | PHP 8.3 FPM | 9083 |
@@ -366,7 +368,7 @@ phpdev/
 
 ### Xdebug
 
-Конфигурация Xdebug для PhpStorm:
+Конфигурация Xdebug для IDE:
 
 ```ini
 [xdebug]
@@ -472,7 +474,9 @@ MAIL_PASSWORD=null
 MAIL_ENCRYPTION=null
 ```
 
-### Legacy PHP 7.x (Docker)
+### Legacy PHP 7.x
+
+На хосте: `./setup-dev-env.sh php7.4` (входит в `PHP_SUPPORTED`). Docker — опционально:
 
 ```bash
 cd docker/legacy-php
@@ -542,7 +546,7 @@ bash setup-dev-env.sh
 
 ### Не удалось скачать приложение
 
-Если при установке не удалось скачать какое-то приложение (Cursor, Obsidian, PhpStorm и др.), в конце скрипта будет выведен список со ссылками для ручного скачивания. Можно также запустить скрипт повторно.
+Если при установке не удалось скачать какое-то приложение (Cursor, Obsidian и др.), в конце скрипта будет выведен список со ссылками для ручного скачивания. Можно также запустить скрипт повторно.
 
 ### Docker требует sudo
 
@@ -575,6 +579,39 @@ sudo journalctl -u php8.5-fpm
 mkcert -install
 # Перезапустите браузер
 ```
+
+### `apt update`: ondrej/php без Release / Yandex Disk NO_PUBKEY
+
+На Ubuntu 26.04 (`resolute`) PPA `ondrej/php` пустой — установщик переключает PHP на [`packages.sury.org`](https://packages.sury.org/php/). Если старый PPA ещё в системе:
+
+```bash
+sudo add-apt-repository --remove -y ppa:ondrej/php 2>/dev/null || true
+sudo rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php-*.sources
+./setup-dev-env.sh php   # сам добавит packages.sury.org при необходимости
+```
+
+Для Yandex Disk без ключа:
+
+```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://repo.yandex.ru/yandex-disk/YANDEX-DISK-KEY.GPG \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/yandex-disk.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/yandex-disk.gpg] http://repo.yandex.ru/yandex-disk/deb/ stable main' \
+  | sudo tee /etc/apt/sources.list.d/yandex-disk.list
+sudo apt-get update
+```
+
+---
+
+## 📝 Последние изменения
+
+**2026-11-12**
+
+- **PHP:** источник пакетов — `packages.sury.org` (вместо мёртвого на 26.04 `ppa:ondrej/php`)
+- **PHP 7.4** добавлен в `PHP_SUPPORTED` (FPM порт `9074`); `php7.3` остаётся в `PHP_LEGACY`
+- **PhpStorm** убран из `apps` — больше не устанавливается
+- **health:** PHP-FPM больше не дублируется из‑за `/lib` + `/usr/lib`
+- README/help обновлены под sury, 7.4 и список приложений без PhpStorm
 
 ---
 

@@ -102,42 +102,6 @@ install_apps() {
         print_warning "FileZilla уже установлен"
     fi
     
-    # --- PhpStorm ---
-    print_info "Установка PhpStorm..."
-    if [ ! -d "/opt/phpstorm" ]; then
-        print_info "Скачивание PhpStorm ${PHPSTORM_VERSION} (это может занять время)..."
-        if download_file "$PHPSTORM_URL" "phpstorm.tar.gz" \
-            "PhpStorm — https://www.jetbrains.com/phpstorm/download/"; then
-            if sudo tar -xzf phpstorm.tar.gz -C /opt \
-                && sudo mv /opt/PhpStorm-* /opt/phpstorm \
-                && sudo chown -R root:root /opt/phpstorm; then
-                sudo ln -sf /opt/phpstorm/bin/phpstorm.sh /usr/local/bin/phpstorm
-                sudo tee /usr/share/applications/phpstorm.desktop > /dev/null << 'EOF'
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=PhpStorm
-Comment=PHP IDE
-Exec=/opt/phpstorm/bin/phpstorm.sh %f
-Icon=/opt/phpstorm/bin/phpstorm.png
-Terminal=false
-Categories=Development;IDE;
-StartupWMClass=jetbrains-phpstorm
-EOF
-                sudo update-desktop-database || true
-                print_success "PhpStorm установлен в /opt/phpstorm"
-                print_info "Запуск: phpstorm или через меню приложений"
-                add_recommendation "Активируйте PhpStorm лицензией JetBrains (или trial)"
-            else
-                print_warning "Не удалось распаковать PhpStorm"
-                FAILED_DOWNLOADS+=("PhpStorm (распаковка)")
-            fi
-            rm -f phpstorm.tar.gz
-        fi
-    else
-        print_warning "PhpStorm уже установлен в /opt/phpstorm"
-    fi
-    
     # --- DBViewer ---
     print_info "Установка DBViewer..."
     if ! is_command_exists dbviewer && ! dpkg -l | grep -q dbviewer; then
